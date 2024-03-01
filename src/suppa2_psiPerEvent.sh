@@ -19,26 +19,22 @@ conda activate SUPPA2
 WS="WS289"
 
 
-events_dir="data/events/240229_events"
+events_file="data/events/${WS}_all_strict.ioe"
 tx_tpm="data/231208_str_q_tx_TPM.tsv"
 
-out_dir="data/240301_psiPerEvent"
+out_dir="data/240301_psiPerEvent_b"
 
 mkdir -p $out_dir
 
 
-# Note, we used the command from the wiki to gather all events in single file:
-#awk '
-#    FNR==1 && NR!=1 { while (/^<header>/) getline; }
-#    1 {print}
-#' *.ioe > WS289_all_strict.ioe
-# see https://github.com/comprna/SUPPA/wiki/SUPPA2-tutorial
-
+# Note we gathered all events in single file with:
+# head -1 WS289_A3_strict.ioe > ../WS289_all_strict.ioe
+# cat *.ioe | sed '/^seqname/d' >> ../WS289_all_strict.ioe
 
 
 suppa.py psiPerEvent \
     --mode INFO \
-    --ioe-file $events_dir/${WS}_all_strict.ioe \
+    --ioe-file $events_file \
     --expression-file $tx_tpm \
     --output-file $out_dir
 
