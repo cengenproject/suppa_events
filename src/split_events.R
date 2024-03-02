@@ -52,10 +52,14 @@ stopifnot(all(! is.na(neurons) ))
 
 samples_by_neuron <- split(samples, neurons)
 
+samples_by_neuron <- samples_by_neuron[lengths(samples_by_neuron) > 1]
+
+
 purrr::iwalk(samples_by_neuron,
             ~ {
               write.table(psi[, .x],
-                          file = file.path(opt$output_path, paste0(.y, ".", opt$extension)))
+                          file = file.path(opt$output_path, paste0(.y, ".", opt$extension)),
+                          quote = FALSE)
               })
 
 
