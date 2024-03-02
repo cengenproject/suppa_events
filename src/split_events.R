@@ -1,6 +1,6 @@
 #!/bin/env Rscript
 
-# Split psi file by neuron to run diffSplice
+# Split psi/tpm file by neuron to run diffSplice
 
 # See this to split with a list of arbitrary conditions: https://github.com/comprna/SUPPA/blob/master/scripts/split_file.R
 
@@ -12,6 +12,7 @@ if(! interactive()){
   spec <- matrix(c(
     'input_path',  'i', 1, "character", "Path to PSI file",
     'output_path', 'o', 1, "character", "Path to directory in which to save split PSI",
+    'extension',   'e', 1, "character", "File extension for the output (e.g. psi or tpm)",
     'help',        'h', 0, "logical",   "Print this help"
   ), byrow=TRUE, ncol=5)
   
@@ -20,8 +21,15 @@ if(! interactive()){
   # Options for experimenting
   opt <- list(
     input_path = "data/240301b_psiPerEvent.psi",
-    output_path = "data/240301_psi_condition"
+    output_path = "data/240301_psi_condition",
+    extension = "psi"
   )
+  
+  # opt <- list(
+  #   input_path = "data/231208_str_q_tx_TPM.tsv",
+  #   output_path = "data/240301_psi_condition",
+  #   extension = "tpm"
+  # )
 }
 
 
@@ -34,7 +42,7 @@ if ( !is.null(opt$help) ) {
 
 
 
-psi <- read.delim(input_path)
+psi <- read.delim(opt$input_path)
 
 
 samples <- names(psi)
@@ -47,7 +55,7 @@ samples_by_neuron <- split(samples, neurons)
 purrr::iwalk(samples_by_neuron,
             ~ {
               write.table(psi[, .x],
-                          file = file.path(output_path, paste0(.y, ".psi")))
+                          file = file.path(opt$output_path, paste0(.y, ".", opt$extension)))
               })
 
 
