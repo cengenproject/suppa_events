@@ -21,12 +21,16 @@ events_file="data/events/${WS}_all_strict.ioe"
 tx_tpm="data/231208_str_q_tx_TPM.tsv"
 psi_file="data/240301b_psiPerEvent.psi"
 
-out_dpsi="data/240302_dpsi/240302"
+# note, the "prefix" should not be a separate directory!
+out_dpsi="data/240304_dpsi/"
+out_prefix="240304"
 
 split_psi_dir="data/intermediates/240301_split_psi"
 
 
 mkdir -p $out_dpsi
+
+
 
 
 echo "Splitting PSI/TPM"
@@ -81,7 +85,13 @@ suppa.py diffSplice \
     --tpm $split_psi_dir/*.tpm \
     --input $events_file \
     --combination \
-    --output $out_dpsi
+    --gene-correction \
+    --output $out_prefix
+
+echo "done, moving files"
+
+mv ${out_prefix}* $out_dpsi
+
 
 
 echo "End $(date)"
