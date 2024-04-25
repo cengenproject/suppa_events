@@ -1,12 +1,27 @@
 
 
-## Note: currently not used, need to refactor main script quite a bit
+
+# For all events, calling c1, c2, ... the first, second,... coordinate given
+# See here for correspondence to exon borders:
+# https://github.com/comprna/SUPPA#generation-of-transcript-events-and-local-alternative-splicing-events
+#
+# here, schematics of exon borders: `###` constitutive exon, `---` alt exon, `...` intron
+
+
 
 
 
 #dispatching function
 extract_coords <- function(event_type, event_coordinates){
-  case
+  switch (event_type,
+    A3 = extract_coords_a3(event_coordinates),
+    A5 = extract_coords_a5(event_coordinates),
+    AL = extract_coords_al(event_coordinates),
+    AF = extract_coords_af(event_coordinates),
+    MX = extract_coords_mx(event_coordinates),
+    RI = extract_coords_ri(event_coordinates),
+    SE = extract_coords_se(event_coordinates)
+  )
 }
 
 
@@ -319,7 +334,6 @@ extract_coords_mx <- function(event_coordinates){
   event_coordinates |>
     enframe(name = NULL,
             value = "event_coordinates") |>
-  filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
   separate_wider_regex(event_coordinates,
                        patterns = c(
                          chr = "^[IVX]{1,3}", ":",
