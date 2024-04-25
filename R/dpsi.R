@@ -16,11 +16,6 @@ export_dir <- "data/outs/240418_fig"
 
 
 
-####!!!! TODO !!!!----
-
-# ==> downsample AF before any test
-# ==> Fig 3B: show 1 gene as illustration
-
 
 
 # Load ----
@@ -28,6 +23,7 @@ export_dir <- "data/outs/240418_fig"
 
 dpsi_dta <- read.table("data/240304_dpsi/240304.dpsi") |>
   rownames_to_column("event_id") |>
+  filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
   as_tibble()
 
 
@@ -46,80 +42,11 @@ dpsi <- dpsi_dta |>
                        names = c("neurA", "neurB"),
                        cols_remove = FALSE)
 
-# qs::qsave(dpsi, "intermediates/240305_dpsi/dpsi.qs")
 
 
-psi <- read.delim("data/240301b_psiPerEvent.psi") |>
-  rownames_to_column("event_id") |>
-  as_tibble() |>
-  separate_wider_regex(event_id,
-                       patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
-                                    event_type = "[SEA53MXRIFL]{2}", "\\:",
-                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
-                       cols_remove = FALSE)
+# filter ----
 
-psi_lg <- pivot_longer(psi,
-                       -c(gene_id, event_type, event_coordinates, event_id),
-                       names_to = "sample_id",
-                       values_to = "PSI") |>
-  mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2])
-
-
-
-tpm <- read.delim("data/231208_str_q_tx_TPM.tsv") |>
-  rownames_to_column("transcript_id") |>
-  as_tibble() |>
-  mutate(gene_id = wb_tx2g(transcript_id, tx2g, warn_missing = TRUE),
-         .after = "transcript_id")
-
-
-
-stopifnot(all.equal(sort(unique(psi_lg$event_id)),
-                    sort(unique(dpsi$event_id))))
-
-stopifnot(all.equal(
-  sort(unique(psi_lg$neuron_id)) |>
-    setdiff(c("ADF", "M4", "Ref")),
-  sort(unique(
-    union(dpsi$neurA,
-          dpsi$neurB))
-  ) |> setdiff("Ref")
-))
-
-
-
-#~ check a few random examples ----
-my_ev <- sample(psi_lg$event_id, 1)
-my_neurA <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
-my_neurB <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
-
-
-psi_lg |>
-  filter(event_id == my_ev,
-         neuron_id %in% c(my_neurA, my_neurB)) |>
-  summarize(mean_PSI = mean(PSI, na.rm = TRUE),
-            .by = neuron_id) |>
-  (\(x) print(x))() |>
-  pull(mean_PSI) |> diff()
-
-dpsi |>
-  filter(event_id == my_ev,
-         neurA %in% c(my_neurA, my_neurB),
-         neurB %in% c(my_neurA, my_neurB))
-
-
-
-
-
-
-
-
-#/ ======= Analysis ====== / ----
-
-# pre-load and filter ----
-
-#~ dPSI ----
-dpsi <- qs::qread("intermediates/240305_dpsi/dpsi.qs") |>
+dpsi <- qs::qread("intermediates/240425_dpsi/dpsi.qs") |>
   filter(neurA != "Ref",
          neurB != "Ref")
 
@@ -153,9 +80,89 @@ dpsi <- dpsi |>
   select( -expr_in_neurA, -expr_in_neurB) |>
   mutate(is_ds = p.val < .05 & detectable & abs(dPSI) > .3)
 
+# qs::qsave(dpsi, "intermediates/240425_dpsi/filt_dpsi.qs")
+
+
+
+
+# psi <- read.delim("data/240301b_psiPerEvent.psi") |>
+#   rownames_to_column("event_id") |>
+#   as_tibble() |>
+#   separate_wider_regex(event_id,
+#                        patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+#                                     event_type = "[SEA53MXRIFL]{2}", "\\:",
+#                                     event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+#                        cols_remove = FALSE)
+# 
+# 
+# 
+# 
+# 
+# 
+# psi_lg <- pivot_longer(psi,
+#                        -c(gene_id, event_type, event_coordinates, event_id),
+#                        names_to = "sample_id",
+#                        values_to = "PSI") |>
+#   mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2])
+# 
+# 
+# 
+# tpm <- read.delim("data/231208_str_q_tx_TPM.tsv") |>
+#   rownames_to_column("transcript_id") |>
+#   as_tibble() |>
+#   mutate(gene_id = wb_tx2g(transcript_id, tx2g, warn_missing = TRUE),
+#          .after = "transcript_id")
+# 
+# 
+# 
+# stopifnot(all.equal(sort(unique(psi_lg$event_id)),
+#                     sort(unique(dpsi$event_id))))
+# 
+# stopifnot(all.equal(
+#   sort(unique(psi_lg$neuron_id)) |>
+#     setdiff(c("ADF", "M4", "Ref")),
+#   sort(unique(
+#     union(dpsi$neurA,
+#           dpsi$neurB))
+#   ) |> setdiff("Ref")
+# ))
+# 
+# 
+# 
+# #~ check a few random examples ----
+# my_ev <- sample(psi_lg$event_id, 1)
+# my_neurA <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
+# my_neurB <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
+# 
+# 
+# psi_lg |>
+#   filter(event_id == my_ev,
+#          neuron_id %in% c(my_neurA, my_neurB)) |>
+#   summarize(mean_PSI = mean(PSI, na.rm = TRUE),
+#             .by = neuron_id) |>
+#   (\(x) print(x))() |>
+#   pull(mean_PSI) |> diff()
+
+dpsi |>
+  filter(event_id == my_ev,
+         neurA %in% c(my_neurA, my_neurB),
+         neurB %in% c(my_neurA, my_neurB))
+
+
+
+
+
+
+
+
+#/ ======= Load ====== / ----
 
 # Cleaned up version
 # see below ("check a few events in genome browser"): low dPSI is often meaningless and in the noise
+
+dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
+
+
 
 clean_dpsi <- dpsi |>
   filter(is_ds)
@@ -315,13 +322,12 @@ source("R/extract_event_coordinates.R")
 coords_all <- dpsi |>
   select(event_id, event_type, gene_id, gene_name, event_coordinates) |>
   distinct() |>
-  group_by(event_type) |>
-  nest() |>
+  nest(.by = event_type) |>
   mutate(coords = map2(event_type, data,
-                       ~ extract_coords(.x, .y$event_coordinates))) |>
+                       ~ extract_coords(.x, .y[["event_coordinates"]]))) |>
   mutate(coords = map2(data, coords, ~bind_cols(.x["event_id"],
                                                 .y)))
-# qs::qsave(coords_all, "intermediates/240305_event_coords/240307_all_coords.qs")
+# qs::qsave(coords_all, "intermediates/240425_dpsi/240425_all_coords.qs")
 
 
 
@@ -574,30 +580,16 @@ d_se |>
 
 # Import after running "sequence_properties.R"
 
-seq_dir <- "intermediates/240305_event_coords/"
-seq_files <- list.files(seq_dir, pattern = "*_seq.qs",
-                        full.names = FALSE)
-seq_types <- str_match(seq_files,
-                       "^240305_([as35eflmxri]{2})_seq\\.qs$")[,2] |>
-  toupper()
 
-
-seq_gc <- seq_files |>
-  set_names(seq_types) |>
-  imap(\(.f, .t){
-    qs::qread(file.path(seq_dir, .f)) |>
-        add_column(type = .t) |>
+seq_gc <- qs::qread("intermediates/240425_dpsi/seq_properties.qs") |>
+  imap(~ {
+    .x |>
+      add_column(type = .y) |>
       pivot_longer(-c(event_id, type),
                    names_pattern = "^([a-z_]+)_(width|gc)$",
                    names_to = c("measurement", ".value")) |>
       mutate(percent_GC = 100 * gc/width)
-    })
-
-
-
-
-
-
+  })
 
 
 

@@ -334,7 +334,6 @@ extract_coords_mx <- function(event_coordinates){
   event_coordinates |>
     enframe(name = NULL,
             value = "event_coordinates") |>
-    filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
     separate_wider_regex(event_coordinates,
                          patterns = c(
                            chr = "^[IVX]{1,3}", ":",
