@@ -11,7 +11,7 @@ library(wbData)
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240418_fig"
+export_dir <- "data/outs/240425_fig"
 
 
 
@@ -40,19 +40,26 @@ dpsi <- dpsi_dta |>
   separate_wider_delim(neuron_pair,
                        delim = ".",
                        names = c("neurA", "neurB"),
-                       cols_remove = FALSE)
+                       cols_remove = FALSE) |>
+  filter(neurA != "Ref",
+         neurB != "Ref")
 
 
 
 # filter ----
 
-dpsi <- qs::qread("intermediates/240425_dpsi/dpsi.qs") |>
-  filter(neurA != "Ref",
-         neurB != "Ref")
 
 
-# filter from Alec's threshold
-gene_expression_table <- read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
+# filter from thresholded
+# gene_expression_table <-  read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
+#   as.data.frame() |>
+#   rownames_to_column("gene_id") |>
+#   pivot_longer(-gene_id,
+#                names_to = "neuron_id",
+#                values_to = "expressed") |>
+#   mutate(is_expressed = expressed == 1L) |> select(-expressed)
+
+gene_expression_table <- cengenDataSC::cengen_sc_2_bulk |>
   as.data.frame() |>
   rownames_to_column("gene_id") |>
   pivot_longer(-gene_id,
@@ -75,10 +82,13 @@ dpsi <- dpsi |>
   left_join(gene_expression_table |> rename(expr_in_neurA = is_expressed),
             by = c("gene_id", neurA = "neuron_id")) |>
   left_join(gene_expression_table |> rename(expr_in_neurB = is_expressed),
-            by = c("gene_id", neurB = "neuron_id")) |>
+            by = c("gene_id", neurB = "neuron_id"))
+
+dpsi <- dpsi |>
   mutate(detectable = expr_in_neurA & expr_in_neurB) |>
   select( -expr_in_neurA, -expr_in_neurB) |>
-  mutate(is_ds = p.val < .05 & detectable & abs(dPSI) > .3)
+  mutate(is_ds = p.val < .1 & detectable & abs(dPSI) > .3)
+
 
 # qs::qsave(dpsi, "intermediates/240425_dpsi/filt_dpsi.qs")
 
@@ -143,10 +153,19 @@ dpsi <- dpsi |>
 #   (\(x) print(x))() |>
 #   pull(mean_PSI) |> diff()
 
+
+my_ev <- sample(filt_dpsi$event_id[filt_dpsi$detectable & abs(filt_dpsi$dPSI) > .3], 1)
+my_neurA <- sample(dpsi$neurA, 1)
+my_neurB <- sample(dpsi$neurB, 1)
+
 dpsi |>
   filter(event_id == my_ev,
          neurA %in% c(my_neurA, my_neurB),
-         neurB %in% c(my_neurA, my_neurB))
+         neurB %in% c(my_neurA, my_neurB)) |>
+  mutate(detectable = expr_in_neurA & expr_in_neurB) |>
+  select( -expr_in_neurA, -expr_in_neurB) |>
+  mutate(is_ds = p.val < .1 & detectable & abs(dPSI) > .3) |>
+  select(gene_name, event_type, neuron_pair, dPSI,p.val, detectable, is_ds)
 
 
 
@@ -164,29 +183,27 @@ dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
 
 
 
-clean_dpsi <- dpsi |>
-  filter(is_ds)
 
 
 
-#~ PSI ----
-
-psi_lg <- read.delim("data/240301b_psiPerEvent.psi") |>
-  rownames_to_column("event_id") |>
-  as_tibble() |>
-  separate_wider_regex(event_id,
-                       patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
-                                    event_type = "[SEA53MXRIFL]{2}", "\\:",
-                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
-                       cols_remove = FALSE) |>
-  pivot_longer(-c(gene_id, event_type, event_coordinates, event_id),
-                       names_to = "sample_id",
-                       values_to = "PSI") |>
-  mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2]) |>
-  filter(neuron_id %in% neurons_here) |>
-  left_join(gene_expression_table |>
-              rename(expressed = is_expressed),
-            by = c("gene_id", "neuron_id"))
+# #~ PSI ----
+# 
+# psi_lg <- read.delim("data/240301b_psiPerEvent.psi") |>
+#   rownames_to_column("event_id") |>
+#   as_tibble() |>
+#   separate_wider_regex(event_id,
+#                        patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+#                                     event_type = "[SEA53MXRIFL]{2}", "\\:",
+#                                     event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+#                        cols_remove = FALSE) |>
+#   pivot_longer(-c(gene_id, event_type, event_coordinates, event_id),
+#                        names_to = "sample_id",
+#                        values_to = "PSI") |>
+#   mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2]) |>
+#   filter(neuron_id %in% neurons_here) |>
+#   left_join(gene_expression_table |>
+#               rename(expressed = is_expressed),
+#             by = c("gene_id", "neuron_id"))
 
 
 
@@ -287,8 +304,8 @@ dpsi |>
   coord_flip() +
   scale_y_continuous(labels = scales::label_comma())
 
-ggsave("ds_per_type.pdf", path = export_dir,
-       width = 16, height = 9, units = "cm")
+# ggsave("ds_per_type.pdf", path = export_dir,
+#        width = 16, height = 9, units = "cm")
 
 
 
@@ -1097,7 +1114,7 @@ gg_cs_se <- d_se |>
 
 
 
-# save ----
+#~ save ----
 
 
 gr_a3 <- gridExtra::gtable_rbind(
@@ -1253,14 +1270,14 @@ tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_ri, d_se),
 
 table(tests$padj < .1)
 
-hist(tests$p_val)
-hist(tests$padj, breaks = 70)
+hist(tests$p_val, breaks = 30)
+hist(tests$padj, breaks = 30)
 
 tests |>
-  filter(padj < 0.1) |>
+  filter(padj < 0.05) |>
   mutate(sig = cut(padj,
-                   breaks =c(.1,  .05,  .01, .001,  0),
-                   labels =   c("#", "*", "**", "***")))
+                   breaks =   c(.1,  .05,  .01, .001,  0),
+                   labels = rev(c("#", "*", "**", "***"))))
 
 
 medians <- map_dfr(
@@ -1475,7 +1492,7 @@ skipped_exons_lengths |>
   geom_histogram(aes(x = exon_length), bins = 50,
                  color = 'white') +
   scale_x_log10() +
-  geom_vline(aes(xintercept = 30),
+  geom_vline(aes(xintercept = 27),
              color = 'red3')
 
 
@@ -1489,25 +1506,25 @@ skipped_exons2 |>
   theme_classic() +
   geom_histogram(aes(x = exon_length,
                      fill = has_ds),
-                 bins = 50,
+                 bins = 40,
                  color = 'white') +
   scale_x_log10() +
-  geom_vline(aes(xintercept = 30),
+  geom_vline(aes(xintercept = 27),
              color = 'grey10', linetype = "dashed") +
   scale_fill_manual(values = c("grey30", "darkred")) +
   geom_text(data = tibble(
     x = c(11, 1000),
     y = c(60,60),
-    label = c(paste0("Microexons (<= 30 bp)\n",
-                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length <= 30]),
+    label = c(paste0("Microexons (<= 27 bp)\n",
+                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length <= 27]),
                      "/",
-                     sum(skipped_exons2$exon_length <= 30),
-                     " (", 100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length <= 30])," %)"),
-              paste0("Other exons (> 30 bp)\n",
-                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length > 30]),
+                     sum(skipped_exons2$exon_length <= 27),
+                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length <= 27]))," %)"),
+              paste0("Other exons (> 27 bp)\n",
+                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length > 27]),
                      "/",
-                     sum(skipped_exons2$exon_length > 30),
-                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length > 30]))," %)"))
+                     sum(skipped_exons2$exon_length > 27),
+                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length > 27]))," %)"))
   ),
   aes(x=x,y=y,label=label)) +
   theme(legend.position = "none") +
