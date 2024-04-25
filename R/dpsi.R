@@ -11,7 +11,16 @@ library(wbData)
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240305_fig"
+export_dir <- "data/outs/240418_fig"
+
+
+
+
+####!!!! TODO !!!!----
+
+# ==> downsample AF before any test
+# ==> Fig 3B: show 1 gene as illustration
+
 
 
 # Load ----
@@ -74,7 +83,7 @@ stopifnot(all.equal(
   sort(unique(
     union(dpsi$neurA,
           dpsi$neurB))
-  )
+  ) |> setdiff("Ref")
 ))
 
 
@@ -103,38 +112,74 @@ dpsi |>
 
 
 
+
+
 #/ ======= Analysis ====== / ----
 
+# pre-load and filter ----
 
-
+#~ dPSI ----
 dpsi <- qs::qread("intermediates/240305_dpsi/dpsi.qs") |>
   filter(neurA != "Ref",
          neurB != "Ref")
 
-neurons_here <- unique(union(dpsi$neurA,
-                             dpsi$neurB))
 
-# expression
-gene_expression_table <- as.data.frame(cengenDataSC::cengen_sc_3_bulk > 0) |>
+# filter from Alec's threshold
+gene_expression_table <- read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
+  as.data.frame() |>
   rownames_to_column("gene_id") |>
-  as_tibble() |>
   pivot_longer(-gene_id,
-               names_to = "neuron",
-               values_to = "gene_is_expressed")
+               names_to = "neuron_id",
+               values_to = "expressed") |>
+  mutate(is_expressed = expressed == 1L) |> select(-expressed)
+
+
+neurons_here <- unique(gene_expression_table$neuron_id)
+genes_with_known_expr <- unique(gene_expression_table$gene_id)
+
+
+
+# annotate expression
 
 dpsi <- dpsi |>
-  left_join(gene_expression_table |> rename(expr_in_neurA = gene_is_expressed),
-            by = c("gene_id", neurA = "neuron")) |>
-  left_join(gene_expression_table |> rename(expr_in_neurB = gene_is_expressed),
-            by = c("gene_id", neurB = "neuron")) |>
+  filter(neurA %in% neurons_here,
+         neurB %in% neurons_here,
+         gene_id %in% genes_with_known_expr) |>
+  left_join(gene_expression_table |> rename(expr_in_neurA = is_expressed),
+            by = c("gene_id", neurA = "neuron_id")) |>
+  left_join(gene_expression_table |> rename(expr_in_neurB = is_expressed),
+            by = c("gene_id", neurB = "neuron_id")) |>
   mutate(detectable = expr_in_neurA & expr_in_neurB) |>
-  select( -expr_in_neurA, -expr_in_neurB)
+  select( -expr_in_neurA, -expr_in_neurB) |>
+  mutate(is_ds = p.val < .05 & detectable & abs(dPSI) > .3)
 
 
-psi_lg <- psi_lg |>
-  left_join(gene_expression_table |> rename(expressed = gene_is_expressed),
-            by = c("gene_id", neuron_id = "neuron"))
+# Cleaned up version
+# see below ("check a few events in genome browser"): low dPSI is often meaningless and in the noise
 
+clean_dpsi <- dpsi |>
+  filter(is_ds)
+
+
+
+#~ PSI ----
+
+psi_lg <- read.delim("data/240301b_psiPerEvent.psi") |>
+  rownames_to_column("event_id") |>
+  as_tibble() |>
+  separate_wider_regex(event_id,
+                       patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+                                    event_type = "[SEA53MXRIFL]{2}", "\\:",
+                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+                       cols_remove = FALSE) |>
+  pivot_longer(-c(gene_id, event_type, event_coordinates, event_id),
+                       names_to = "sample_id",
+                       values_to = "PSI") |>
+  mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2]) |>
+  filter(neuron_id %in% neurons_here) |>
+  left_join(gene_expression_table |>
+              rename(expressed = is_expressed),
+            by = c("gene_id", "neuron_id"))
 
 
 
@@ -148,12 +193,13 @@ dpsi$p.val |> hist(breaks = 70)
 table(dpsi$p.val < .05)
 
 dpsi |>
+  filter(detectable) |>
   slice_sample(n = 1e4) |>
   ggplot() +
   theme_classic() +
   geom_point(aes(x = dPSI,
                  y = -log(p.val),
-                 color = p.val < .05),
+                 color = is_ds),
              alpha = .5) +
   # scale_y_continuous(limits = c(1,NA)) +
   facet_grid(cols = vars(event_type)) +
@@ -172,11 +218,19 @@ dpsi |>
   pull(event_type) |>
   table()
 
+dpsi |>
+  filter(detectable) |>
+  select(event_id, event_type) |>
+  distinct() |>
+  pull(event_type) |>
+  table()
+
+
 
 
 # type vs DS
 dpsi |>
-  summarize(has_ds = any(p.val < 0.05),
+  summarize(has_ds = any(is_ds),
             .by = c(event_id, event_type)) |>
   select(event_type, has_ds) |>
   ggplot() +
@@ -193,21 +247,27 @@ dpsi |>
 
 # type vs DS vs detectable
 
-table(neurons_here %in% colnames(cengenDataSC::cengen_sc_3_bulk))
-
-
-
-
 
 dpsi |>
   summarize(gene_expressed = any(detectable),
-            has_ds = any(p.val < 0.05),
+            has_ds = any(is_ds),
             .by = c(event_id, event_type)) |>
-  mutate(category = case_when(
+  mutate(
+    category = case_when(
     !gene_expressed ~ "gene not expressed",
-    !has_ds ~ "no differential splicing in neurons",
-    .default = "differentially spliced",
-  ) |> fct_inorder()) |>
+    !has_ds ~ "no dAS in neurons",
+    .default = "dAS",
+  ) |> fct_inorder(),
+  event_type = case_match(
+    event_type,
+    "A3" ~ "Alt. 3' ss",
+    "A5" ~ "Alt. 5' ss",
+    "AF" ~ "Alt. first exon",
+    "AL" ~ "Alt. last exon",
+    "MX" ~ "Multiple exons",
+    "RI" ~ "Intron retention",
+    "SE" ~ "Cassette exon"
+  )) |>
   select(event_type, category) |>
   ggplot() +
   theme_classic() +
@@ -215,526 +275,69 @@ dpsi |>
   scale_fill_manual(values = c("grey90", "grey30", "darkred")) +
   xlab(NULL) + ylab("Number of events") +
   theme(legend.position = "top",
-        legend.title = element_blank())
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_comma())
 
-# ggsave("ds_per_type.pdf", path = export_dir,
-#        width = 21, height = 8, units = "cm")
-
-
-
-
-#/ ===  Each type  === ----
-
-
-# For all events, calling c1, c2, ... the first, second,... coordinate given
-# See here for correspondence to exon borders:
-# https://github.com/comprna/SUPPA#generation-of-transcript-events-and-local-alternative-splicing-events
-#
-# here, schematics of exon borders: `###` constitutive exon, `---` alt exon, `...` intron
+ggsave("ds_per_type.pdf", path = export_dir,
+       width = 16, height = 9, units = "cm")
 
 
 
 
-#~ A3 ----
+
+# Check a few examples in browser
+
+dpsi |>
+  filter(p.val < .05 & detectable &
+           dPSI > .3) |>
+  slice_sample(n = 1) |>
+  as.data.frame()
+
+dpsi |>
+  filter(p.val < .05 & detectable) |>
+  pull(dPSI) |>
+  (\(x) table(x > .3))()
 
 
 
+dpsi |>
+  filter(p.val < .05 & detectable) |> pull(dPSI) |> abs() |> hist()
+
+
+
+
+
+# Extract coordinates of event ----
+source("R/extract_event_coordinates.R")
+
+coords_all <- dpsi |>
+  select(event_id, event_type, gene_id, gene_name, event_coordinates) |>
+  distinct() |>
+  group_by(event_type) |>
+  nest() |>
+  mutate(coords = map2(event_type, data,
+                       ~ extract_coords(.x, .y$event_coordinates))) |>
+  mutate(coords = map2(data, coords, ~bind_cols(.x["event_id"],
+                                                .y)))
+# qs::qsave(coords_all, "intermediates/240305_event_coords/240307_all_coords.qs")
+
+
+
+
+# Check that equivalent to previous
+
+# all.equal(d_a3,
+#           d_a3b)
 # 
-#
-#'  +  #########...........-----######
-#             e1        s2    s3
-#             c1/c3     c2    c4
-#
-#'  -  #########-----...........######
-#             e1   e2          s3
-#             c3   c1          c2/c4
-#
-#
-
-
-
-d_a3 <- dpsi |>
-  filter(event_type == "A3") |>
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "-",
-                         c2 = "[0-9]+", ":",
-                         c3 = "[0-9]+", "-",
-                         c4 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c4, as.integer)) |>
-  mutate(test = if_else(strand == "+",
-                        all(c1 == c3),
-                        all(c2 == c4)),
-         .by = "strand") |>
-  (\(x) {stopifnot(all(x[["test"]])); select(x, -test)})() |>
-  mutate(
-    intron_start = if_else(strand == "+",
-                           c1 + 1,
-                           c1 + 1),
-    intron_end = if_else(strand == "+",
-                         c2 - 1,
-                         c2 - 1),
-    intron_length = intron_end - intron_start + 1,
-    
-    overhang_start = if_else(strand == "+",
-                             c2,
-                             c3 + 1),
-    overhang_end = if_else(strand == "+",
-                           c4 - 1,
-                           c1),
-    overhang_length = overhang_end - overhang_start +1
-    )
-
-# d_a3 |>
-#   select(event_id, chr, strand,
-#          intron_start, intron_end, intron_length,
-#          overhang_start, overhang_end, overhang_length) |>
-#   distinct()|>
-#   qs::qsave("intermediates/240305_event_coords/240305_a3_lengths.qs")
-
-
-
-
-
-#~ A5 ----
-
-#
-#'  +  #########-----...........######
-#             e1   e2          s3
-#             c3   c1          c2/c4
-#
-#'  -  #########...........-----######
-#             e1        s2    s3
-#             c1/c3     c2    c4
-#
-#
-
-
-
-d_a5 <- dpsi |>
-  filter(event_type == "A5") |> #slice_sample(n = 5) |>
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "-",
-                         c2 = "[0-9]+", ":",
-                         c3 = "[0-9]+", "-",
-                         c4 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c4, as.integer)) |>
-  mutate(test = if_else(strand == "+",
-                        all(c2 == c4),
-                        all(c1 == c3)),
-         .by = "strand") |>
-  (\(x) {stopifnot(all(x[["test"]])); select(x, -test)})() |>
-  mutate(
-    intron_start = if_else(strand == "+",
-                           c1 + 1,
-                           c1 + 1),
-    intron_end = if_else(strand == "+",
-                         c2 - 1,
-                         c2 - 1),
-    intron_length = intron_end - intron_start + 1,
-    
-    overhang_start = if_else(strand == "+",
-                             c3 + 1,
-                             c2),
-    overhang_end = if_else(strand == "+",
-                           c1,
-                           c4 - 1),
-    overhang_length = overhang_end - overhang_start +1
-  )
-
-# d_a5 |>
-#   select(event_id, chr, strand,
-#          intron_start, intron_end, intron_length,
-#          overhang_start, overhang_end, overhang_length) |>
-#   distinct()|>
-#   qs::qsave("intermediates/240305_event_coords/240305_a5_lengths.qs")
-
-
-
-
-
-
-
-#~ AF ----
-
-#
-#'  +    -----.......-------.........######
-#       s1   e1      s2   e2         s3
-#       c1   c2      c4   c5        c3/c6
-#
-#'  -  #########...........-----..........-------
-#             e1        s2    e2         s3     e3
-#             c1/c4     c2    c3         c5     c6
-#
-#
-
-
-
-d_af <- dpsi |>
-  filter(event_type == "AF") |> #slice_sample(n = 5) |>
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "[:-]",
-                         c2 = "[0-9]+", "[:-]",
-                         c3 = "[0-9]+", ":",
-                         c4 = "[0-9]+", "[:-]",
-                         c5 = "[0-9]+", "[:-]",
-                         c6 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c6, as.integer)) |>
-  mutate(test = if_else(strand == "+",
-                        all(c3 == c6),
-                        all(c1 == c4)),
-         .by = "strand") |>
-  (\(x) {stopifnot(all(x[["test"]])); select(x, -test)})() |>
-  mutate(
-    # Distal exon
-    #exon
-    distal_exon_start = if_else(strand == "+",
-                                   c1,
-                                   c5),
-    distal_exon_end = if_else(strand == "+",
-                                 c2,
-                                 c6),
-    distal_exon_length = distal_exon_end - distal_exon_start + 1,
-    
-    #intron
-    distal_intron_start = if_else(strand == "+",
-                                     c2 + 1,
-                                     c1 + 1),
-    distal_intron_end = if_else(strand == "+",
-                                   c3 - 1,
-                                   c5 - 1),
-    distal_intron_length = distal_intron_end - distal_intron_start + 1,
-    
-    # Proximal exon
-    #exon
-    proximal_exon_start = if_else(strand == "+",
-                                    c4,
-                                    c2),
-    proximal_exon_end = if_else(strand == "+",
-                                  c5,
-                                  c3),
-    proximal_exon_length = proximal_exon_end - proximal_exon_start + 1,
-    
-    #intron
-    proximal_intron_start = if_else(strand == "+",
-                                      c5 + 1,
-                                      c1 + 1),
-    proximal_intron_end = if_else(strand == "+",
-                                    c3 - 1,
-                                    c2 - 1),
-    proximal_intron_length = proximal_intron_end - proximal_intron_start + 1
-  )
-
-# d_af |>
-#   select(event_id, chr, strand,
-#          proximal_exon_start, proximal_exon_end, proximal_exon_length,
-#          proximal_intron_start, proximal_intron_end, proximal_intron_length,
-#          distal_exon_start, distal_exon_end, distal_exon_length,
-#          distal_intron_start, distal_intron_end, distal_intron_length) |>
-#   distinct()|>
-#   qs::qsave("intermediates/240305_event_coords/240305_af_lengths.qs")
-
-
-
-
-
-
-
-#~ AL ----
-
-#'  +  #########...........-----..........-------
-#             e1        s2    e2         s3     e3
-#             c1/c4     c2    c3         c5     c6
-#
-#'  -    -----.......-------.........######
-#       s1   e1      s2   e2         s3
-#       c1   c2      c4   c5        c3/c6
-#
-#
-#
-
-
-
-d_al <- dpsi |>
-  filter(event_type == "AL") |> #slice_sample(n = 5) |>
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "[:-]",
-                         c2 = "[0-9]+", "[:-]",
-                         c3 = "[0-9]+", ":",
-                         c4 = "[0-9]+", "[:-]",
-                         c5 = "[0-9]+", "[:-]",
-                         c6 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c6, as.integer)) |>
-  mutate(test = if_else(strand == "+",
-                        all(c1 == c4),
-                        all(c3 == c6)),
-         .by = "strand") |>
-  (\(x) {stopifnot(all(x[["test"]])); select(x, -test)})() |>
-  mutate(
-    # Distal exon
-    #exon
-    distal_exon_start = if_else(strand == "+",
-                                c5,
-                                c1),
-    distal_exon_end = if_else(strand == "+",
-                              c6,
-                              c2),
-    distal_exon_length = distal_exon_end - distal_exon_start + 1,
-    
-    #intron
-    distal_intron_start = if_else(strand == "+",
-                                  c1 + 1,
-                                  c2 + 1),
-    distal_intron_end = if_else(strand == "+",
-                                c5 - 1,
-                                c3 - 1),
-    distal_intron_length = distal_intron_end - distal_intron_start + 1,
-    
-    # Proximal exon
-    #exon
-    proximal_exon_start = if_else(strand == "+",
-                                  c2,
-                                  c4),
-    proximal_exon_end = if_else(strand == "+",
-                                c3,
-                                c5),
-    proximal_exon_length = proximal_exon_end - proximal_exon_start + 1,
-    
-    #intron
-    proximal_intron_start = if_else(strand == "+",
-                                    c1 + 1,
-                                    c5 + 1),
-    proximal_intron_end = if_else(strand == "+",
-                                  c2 - 1,
-                                  c3 - 1),
-    proximal_intron_length = proximal_intron_end - proximal_intron_start + 1
-  )
-
-# d_al |>
-#   select(event_id, chr, strand,
-#          proximal_exon_start, proximal_exon_end, proximal_exon_length,
-#          proximal_intron_start, proximal_intron_end, proximal_intron_length,
-#          distal_exon_start, distal_exon_end, distal_exon_length,
-#          distal_intron_start, distal_intron_end, distal_intron_length) |>
-#   distinct() |>
-#   qs::qsave("intermediates/240305_event_coords/240305_al_lengths.qs")
-
-
-
-
-
-
-
-
-
-
-#~ MX ----
-
-#'  +  #########..........-----..........-------........#####
-#             e1        s2    e2         s3     e3      s4
-#             c1/c5     c2    c3         c6     c7      c4/c8
-#
-# Minus strand identical
-#
-#
-#
-
-
-# note: one event weird coordinates, excluding
-
-
-d_mx <- dpsi |>
-  filter(event_type == "MX") |> 
-  filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "-",
-                         c2 = "[0-9]+", ":",
-                         c3 = "[0-9]+", "-",
-                         c4 = "[0-9]+", ":",
-                         c5 = "[0-9]+", "-",
-                         c6 = "[0-9]+", ":",
-                         c7 = "[0-9]+", "-",
-                         c8 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c8, as.integer)) |>
-  mutate(test = all(c1 == c5 & c4 == c8)) |>
-  (\(x) {stopifnot(all(x[["test"]])); select(x, -test)})() |>
-  mutate(
-    # First exon
-    #exon
-    first_exon_start = c2,
-    first_exon_end = c3,
-    first_exon_length = first_exon_end - first_exon_start + 1,
-    
-    # upstream intron
-    first_up_intron_start = c1 + 1,
-    first_up_intron_end = c2 - 1,
-    first_up_intron_length = first_up_intron_end - first_up_intron_start + 1,
-    
-    # downstream intron
-    first_dn_intron_start = c3 + 1,
-    first_dn_intron_end = c4 - 1,
-    first_dn_intron_length = first_dn_intron_end - first_dn_intron_start + 1,
-    
-    # Second exon
-    #exon
-    second_exon_start = c6,
-    second_exon_end = c7,
-    second_exon_length = second_exon_end - second_exon_start + 1,
-    
-    # second upstream intron
-    second_up_intron_start = c1 + 1,
-    second_up_intron_end = c6 - 1,
-    second_up_intron_length = second_up_intron_end - second_up_intron_start + 1,
-    
-    # second downstream intron
-    second_dn_intron_start = c7 + 1,
-    second_dn_intron_end = c4 - 1,
-    second_dn_intron_length = second_dn_intron_end - second_dn_intron_start + 1
-  )
-
-# d_mx |>
-#   select(event_id, chr, strand,
-#          first_exon_start, first_exon_end, first_exon_length,
-#          first_up_intron_start, first_up_intron_end, first_up_intron_length,
-#          first_dn_intron_start, first_dn_intron_end, first_dn_intron_length,
-#          second_exon_start, second_exon_end, second_exon_length,
-#          second_up_intron_start, second_up_intron_end, second_up_intron_length,
-#          second_dn_intron_start, second_dn_intron_end, second_dn_intron_length) |>
-#   distinct() |>
-#   qs::qsave("intermediates/240305_event_coords/240305_mx_lengths.qs")
-
-
-
-
-
-#~ RI ----
-
-#'  +  #########------------------############
-#     s1       e1                s2          e2
-#     c1       c2                c3          c4
-#
-# Minus strand identical
-#
-#
-#
-
-
-
-
-d_ri <- dpsi |>
-  filter(event_type == "RI") |> 
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", ":",
-                         c2 = "[0-9]+", "-",
-                         c3 = "[0-9]+", ":",
-                         c4 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c4, as.integer)) |>
-  mutate(
-    # Upstream exon
-    upstream_exon_start = if_else(strand == "+", c1, c3),
-    upstream_exon_end = if_else(strand == "+", c2, c4),
-    upstream_exon_length = upstream_exon_end - upstream_exon_start + 1,
-    
-    # Downstream exon
-    downstream_exon_start = if_else(strand == "+", c3, c1),
-    downstream_exon_end = if_else(strand == "+", c4, c2),
-    downstream_exon_length = downstream_exon_end - downstream_exon_start + 1,
-    
-    # Intron
-    intron_start = c2 + 1,
-    intron_end = c3 - 1,
-    intron_length = intron_end - intron_start + 1
-  )
-
-# d_ri |>
-#   select(event_id, chr, strand,
-#          upstream_exon_start, upstream_exon_end, upstream_exon_length,
-#          downstream_exon_start, downstream_exon_end, downstream_exon_length,
-#          intron_start, intron_end, intron_length) |>
-#   distinct() |>
-#   qs::qsave("intermediates/240305_event_coords/240305_ri_lengths.qs")
-
-
-
-
-
-
-
-#~ SE ----
-
-#'  +  ########...........-----------.........############
-#            e1          s2          e2       s3
-#            c1          c2          c3       c4
-#
-# Minus strand identical
-#
-#
-#
-
-
-
-
-d_se <- dpsi |>
-  filter(event_type == "SE") |> 
-  separate_wider_regex(event_coordinates,
-                       patterns = c(
-                         chr = "^[IVX]{1,3}", ":",
-                         c1 = "[0-9]+", "-",
-                         c2 = "[0-9]+", ":",
-                         c3 = "[0-9]+", "-",
-                         c4 = "[0-9]+", ":",
-                         strand = "[+-]$"
-                       )) |>
-  mutate(across(c1:c4, as.integer)) |>
-  mutate(
-    # Upstream intron
-    upstream_intron_start = c1 + 1,
-    upstream_intron_end = c2 - 1,
-    upstream_intron_length = upstream_intron_end - upstream_intron_start + 1,
-    
-    # Downstream intron
-    downstream_intron_start = c3 + 1,
-    downstream_intron_end = c4 - 1,
-    downstream_intron_length = downstream_intron_end - downstream_intron_start + 1,
-    
-    # Exon
-    exon_start = c2,
-    exon_end = c3,
-    exon_length = exon_end - exon_start + 1
-  )
-
-# d_se |>
-#   select(event_id, chr, strand,
-#          upstream_intron_start, upstream_intron_end, upstream_intron_length,
-#          downstream_intron_start, downstream_intron_end, downstream_intron_length,
-#          exon_start, exon_end, exon_length) |>
-#   distinct() |>
-#   qs::qsave("intermediates/240305_event_coords/240305_se_lengths.qs")
-
-
+# 
+# all.equal(d_mx,
+#           dpsi |>
+#             filter(event_type == "MX") |>
+#             left_join(coords_all$coords[[which(coords_all$event_type == "MX")]],
+#                       by = "event_id") |>
+#             select(all_of(names(d_mx))))
 
 
 
@@ -753,9 +356,12 @@ d_se <- dpsi |>
 
 # Plot lengths (see more plots below) ----
 
-d_a3 |>
+dpsi |>
+  filter(event_type == "A3") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "A3")]],
+            by = "event_id") |>
   filter(detectable) |>
-  summarize(has_ds = any(p.val < 0.05),
+  summarize(has_ds = any(is_ds),
             .by = c(intron_length, overhang_length, event_id)) |>
   pivot_longer(-c(event_id, has_ds),
                names_to = "measure",
@@ -774,8 +380,6 @@ d_a3 |>
   scale_color_manual(values = c("grey30", "darkred"))
 
 
-# ggsave("lengths_a3.pdf", path = export_dir,
-#        width = 9, height = 6, units = "cm")
 
 
 
@@ -1024,8 +628,11 @@ seq_cons <- cons_files |>
 #>> prep plot ----
 
 #~  A3 ----
-d_a3 <- d_a3 |>
-  summarize(has_ds = any(p.val < 0.05),
+d_a3 <- dpsi |>
+  filter(event_type == "A3") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "A3")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(intron_length, overhang_length,
                     event_id)) |>
@@ -1046,8 +653,11 @@ d_a3 <- d_a3 |>
 
 #~ A5 ----
 
-d_a5 <- d_a5 |>
-  summarize(has_ds = any(p.val < 0.05),
+d_a5 <- dpsi |>
+  filter(event_type == "A5") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "A5")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(intron_length, overhang_length,
                     event_id)) |>
@@ -1070,8 +680,11 @@ d_a5 <- d_a5 |>
 
 
 
-d_af <- d_af |>
-  summarize(has_ds = any(p.val < 0.05 & detectable),
+d_af <- dpsi |>
+  filter(event_type == "AF") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "AF")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(event_id,
                     distal_exon_length, distal_intron_length,
@@ -1095,8 +708,11 @@ d_af <- d_af |>
 #~ AL ----
 
 
-d_al <- d_al |>
-  summarize(has_ds = any(p.val < 0.05 & detectable),
+d_al <- dpsi |>
+  filter(event_type == "AL") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "AL")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(distal_exon_length, distal_intron_length,
                     proximal_exon_length, proximal_intron_length,
@@ -1118,8 +734,11 @@ d_al <- d_al |>
 #~ MX ----
 
 
-d_mx <- d_mx |>
-  summarize(has_ds = any(p.val < 0.05 & detectable),
+d_mx <- dpsi |>
+  filter(event_type == "MX") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "MX")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(first_exon_length, first_up_intron_length,
                     first_dn_intron_length, second_exon_length,
@@ -1149,8 +768,11 @@ d_mx <- d_mx |>
 #~ RI ----
 
 
-d_ri <- d_ri |>
-  summarize(has_ds = any(p.val < 0.05 & detectable),
+d_ri <- dpsi |>
+  filter(event_type == "RI") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "RI")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(intron_length, upstream_exon_length,
                     downstream_exon_length,
@@ -1173,8 +795,11 @@ d_ri <- d_ri |>
 #~ SE ----
 
 
-d_se <- d_se |>
-  summarize(has_ds = any(p.val < 0.05 & detectable),
+d_se <- dpsi |>
+  filter(event_type == "SE") |>
+  left_join(coords_all$coords[[which(coords_all$event_type == "SE")]],
+            by = "event_id") |>
+  summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(upstream_intron_length, downstream_intron_length,
                     exon_length,
@@ -1196,7 +821,7 @@ d_se <- d_se |>
 
 
 # qs::qsave(list(d_a3, d_a5, d_af, d_al, d_mx, d_ri, d_se),
-#           "intermediates/240305_events_full.qs")
+#           "intermediates/240307_events_full.qs")
 
 
 
@@ -1526,16 +1151,20 @@ gr_row_dn <- gridExtra::gtable_cbind(gr_mx, gr_ri, gr_se)
 
 gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
 
-ggsave("all_together.pdf", plot = gr, path = export_dir,
-       width = 40, height = 60, units = "cm")
+# ggsave("upper_row.png", plot = gr_row_up, path = export_dir,
+#        width = 35, height = 14, units = "cm")
+# 
+# ggsave("lower_row.png", plot = gr_row_dn, path = export_dir,
+#        width = 35, height = 14, units = "cm")
 
 
-egg::gtable_frame(ggplotGrob(gg_l_a3)) |>
-  grid::grid.draw()
+# ggsave("all_together.png", plot = gr, path = export_dir,
+#        width = 40, height = 60, units = "cm")
 
-egg::gtable_frame(ggplotGrob(gg_l_a3))
-egg::gtable_frame(ggplotGrob(gg_gc_a3))
-egg::gtable_frame(ggplotGrob(gg_cs_a3))
+
+
+
+#~~~ Individual plots
 
 # ggsave("lengths_a3.pdf", plot = gg_l_a3, path = export_dir,
 #        width = 9, height = 6, units = "cm")
@@ -1827,175 +1456,88 @@ d_af |>
 
 
 
-# Specificity ----
-
-
-
-psi_by_neuron <- psi_lg |>
-  filter(expressed) |>
-  summarize(PSI_neuron = mean(PSI, na.rm = TRUE),
-            .by = c("event_id", "gene_id","event_type",
-                    "neuron_id"))
-
-hist(psi_by_neuron$PSI_neuron, breaks = 100)
-
-ggplot(psi_by_neuron) +
-  theme_classic() +
-  geom_density(aes(x = PSI_neuron, fill = event_type), alpha = .3)
 
 
 
 
-centered_gini <- function(x) DescTools::Gini(abs(x - .5))
-gcad <- function(x){
-  x <- x[! is.na(x)]
-  n <- length(x)
-  abs_diffs <- DescTools::CombPairs(x, x) |>
-    as.matrix() |>
-    matrixStats::rowDiffs() |> 
-    abs()
-  
-  if(max(abs_diffs) == 0) return(0)
-  
-  DescTools::Gini(abs_diffs)*n/(n^2)
-}
-gcsd <- function(x){
-  x <- x[! is.na(x)]
-  n <- length(x)
-  diffs <- DescTools::CombPairs(x, x) |>
-    as.matrix() |>
-    matrixStats::rowDiffs()
-  
-  if(all(diffs == 0)) return(0)
-  
-  DescTools::Gini(diffs^2)*n/(n^2)
-}
-
-
-psi_var <- psi_by_neuron |>
-  filter(!is.na(PSI_neuron)) |>
-  summarize(var = var(PSI_neuron, na.rm = TRUE),
-            # gmd = GiniDistance::gmd(PSI_neuron),
-            # mad = mad(PSI_neuron),
-            gcsd = gcsd(PSI_neuron),
-            n = n(),
-         .by = c("event_id", "gene_id","event_type")) |>
-  filter(n > 20)
 
 
 
-gg_var <- psi_var |>
-  # filter(n > 30) |>
+
+
+# Microexons ----
+
+skipped_exons_lengths <- coords_all |>
+  filter(event_type == "SE") |>
+  pull(coords) |>
+  first() |>
+  select(event_id, exon_length)
+
+skipped_exons <- dpsi |>
+  filter(event_type == "SE") |>
+  left_join(skipped_exons_lengths)
+
+skipped_exons_lengths |>
   ggplot() +
   theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = event_type, y = var),
-                               alpha = .5) +
-  ylab("Variance")
+  geom_histogram(aes(x = exon_length), bins = 50,
+                 color = 'white') +
+  scale_x_log10() +
+  geom_vline(aes(xintercept = 30),
+             color = 'red3')
 
 
-gg_gcsd <- psi_var |>
-  # filter(n > 30) |>
+skipped_exons2 <- skipped_exons |>
+  filter(detectable) |>
+  summarize(has_ds = any(is_ds),
+            .by = c(exon_length, event_id))
+
+skipped_exons2 |>
   ggplot() +
   theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = event_type, y = gcsd),
-                               alpha = .5) +
-  ylab("Specificity")
+  geom_histogram(aes(x = exon_length,
+                     fill = has_ds),
+                 bins = 50,
+                 color = 'white') +
+  scale_x_log10() +
+  geom_vline(aes(xintercept = 30),
+             color = 'grey10', linetype = "dashed") +
+  scale_fill_manual(values = c("grey30", "darkred")) +
+  geom_text(data = tibble(
+    x = c(11, 1000),
+    y = c(60,60),
+    label = c(paste0("Microexons (<= 30 bp)\n",
+                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length <= 30]),
+                     "/",
+                     sum(skipped_exons2$exon_length <= 30),
+                     " (", 100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length <= 30])," %)"),
+              paste0("Other exons (> 30 bp)\n",
+                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length > 30]),
+                     "/",
+                     sum(skipped_exons2$exon_length > 30),
+                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length > 30]))," %)"))
+  ),
+  aes(x=x,y=y,label=label)) +
+  theme(legend.position = "none") +
+  xlab("Exon length (bp)") +
+  ylab("Number of exons")
 
-patchwork::wrap_plots(gg_var, gg_gcsd, ncol = 1)
+# ggsave("microexons.pdf", path = export_dir,
+#        width = 20, height = 12, units = "cm")
 
-# ggsave("variance_specificity.pdf", path = export_dir,
-#        width = 21, height = 12, units = "cm")
-
-
-
-
-
-
-psi_var |>
+skipped_exons2 |>
+  mutate(microexon = exon_length <= 30) |>
+  # summarize(prop_ds = mean(has_ds),
+  #           .by = microexon) |>
   ggplot() +
   theme_classic() +
-  geom_point(aes(x = var, y = gcsd))
-psi_var |> filter(var>.1 & gmd < .32) |> pull(event_id) -> ev
-
-psi_by_neuron |> filter(event_id %in% ev) |> 
-  group_by(event_id) |>
-  arrange(event_id, desc(PSI_neuron)) |>
-  mutate(rank = rank(1-PSI_neuron)) |>
-  ggplot() +
-  theme_classic() +
-  geom_line(aes(x = rank, y = PSI_neuron, color = event_id)) +
-  theme(legend.position = "none")
-
-
-psi_var |>
-  ggplot() +
-  theme_classic() +
-  geom_boxplot(aes(x = event_type, y = gcad))
-
-
-psi_var |>
-  ggplot() +
-  theme_classic() +
-  geom_density(aes(x = gcad, fill = event_type), alpha = .3)
+  geom_bar(aes(x = microexon,
+               fill = has_ds)) +
+  scale_fill_manual(values = c("grey30", "darkred"))
 
 
 
-# look at least and most specific
 
-extremal_var_events <- psi_var |>
-  group_by(event_type) |>
-  slice_max(order_by = gcsd, n = 5) |>
-  pull(event_id)
-
-
-mat_extr_var <- psi_by_neuron |>
-  filter(event_id %in% extremal_var_events) |>
-  pivot_wider(id_cols = event_id,
-              names_from = neuron_id,
-              values_from = PSI_neuron) |>
-  column_to_rownames("event_id") |>
-  as.matrix()
-
-annot_df <- psi_by_neuron |>
-  filter(event_id %in% extremal_var_events) |>
-  select(-PSI_neuron, -neuron_id) |>
-  distinct() |>
-  left_join(psi_var,
-            by = c("event_id", "gene_id", "event_type")) |>
-  select(-gene_id) |>
-  column_to_rownames("event_id") |>
-  arrange(event_type, var)
-
-pheatmap::pheatmap(mat_extr_var[rownames(annot_df),],
-                   cluster_rows = FALSE,
-                   cluster_cols = FALSE,
-                   show_rownames = FALSE,
-                   annotation_row = annot_df)
-
-
-psi_by_neuron |>
-  filter(event_id %in% extremal_tau_events) |>
-  # count(event_id)
-  arrange(event_id) |> View()
-
-
-psi_by_neuron |>
-  filter(event_id %in% extremal_var_events) |>
-  group_by(event_id) |>
-  arrange(event_id, desc(PSI_neuron)) |>
-  mutate(rank = rank(1-PSI_neuron)) |>
-  ggplot() +
-  theme_classic() +
-  geom_line(aes(x = rank, y = PSI_neuron, color = event_id)) +
-  theme(legend.position = "none")
-  
-
-
-
-psi_var |>
-  group_by(event_type) |>
-  slice_max(order_by = gcsd, n = 5) |>
-  pull(event_id)
 
 
 
