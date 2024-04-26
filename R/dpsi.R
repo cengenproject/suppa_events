@@ -1423,15 +1423,17 @@ skipped_exons2 |>
 # ggsave("microexons.pdf", path = export_dir,
 #        width = 20, height = 12, units = "cm")
 
-skipped_exons2 |>
-  mutate(microexon = exon_length <= 27) |>
-  # summarize(prop_ds = mean(has_ds),
-  #           .by = microexon) |>
-  ggplot() +
-  theme_classic() +
-  geom_bar(aes(x = microexon,
-               fill = has_ds)) +
-  scale_fill_manual(values = c("grey30", "darkred"))
+# test
+skp_ex_test <- skipped_exons2 |>
+  mutate(is_microexon = exon_length <= 27) |>
+  summarize(nb_ds = sum(has_ds),
+            nb_tot = n(),
+            .by = is_microexon)
+
+prop.test(x = skp_ex_test$nb_ds,
+          n = skp_ex_test$nb_tot)
+
+
 
 
 #~ Microexons: nb of diff pairs ----
