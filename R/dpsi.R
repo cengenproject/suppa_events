@@ -1086,6 +1086,19 @@ tests |>
 
 # see outs/sig_table.xlsx
 
+# tests |>
+#   left_join(medians,
+#             by = c("event_type", "feature", "metric")) |>
+#   # filter(padj < 0.1) |>
+#   mutate(sig = cut(padj,
+#                    breaks =c(0, .001, .01, .05, .1),
+#                    labels =   c("***", "**", "*", "#"))) |>
+#   rename(`p-value` = p_val,
+#          `adjusted p-value` = padj,
+#          `median in dAS events` = median_ds,
+#          `median in non-dAS events` = median_nonds,
+#          `significance level` = sig) |>
+#   writexl::write_xlsx(paste0(export_dir, "/all_comparisons.xlsx"))
 
 
 
@@ -1094,6 +1107,12 @@ tests |>
 
 # se exon length
 
+d_se_med <- d_se |>
+  filter(is_detectable,
+         feature == "exon") |>
+  summarize(median = median(length),
+            .by = has_ds)
+
 d_se |>
   filter(is_detectable) |>
   filter(feature == "exon") |>
@@ -1101,51 +1120,162 @@ d_se |>
   theme_classic() +
   geom_density(aes(x = length, fill = has_ds),
                alpha = .5) +
-  scale_x_log10() +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_se_med,
+             linetype = 'dotted', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
+  scale_color_manual(values = c("grey30", "darkred")) +
   scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
   xlab("Skipped exon length (bp)")
 
-# ggsave("se_exon_length_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
+d_se |>
+  filter(is_detectable) |>
+  filter(feature == "exon") |>
+  mutate(has_ds = if_else(has_ds, "dAS", "non-dAS") |>
+           factor(levels = c("non-dAS", "dAS"))) |>
+  ggplot() +
+  theme_classic() +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_se_med,
+             linetype = 'dashed', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
+  scale_fill_manual(values = c("grey30", "darkred")) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
+  theme(legend.position = "none") +
+  xlab("Skipped exon length (bp)") + ylab(NULL)
+
+
+# ggsave("ridge_se_exon_length_density.pdf", path = export_dir,
+#        width = 10, height = 7, units = "cm")
 
 
 
-# AF length
+# AF dist exon length
+
+d_af_de_med <- d_af |>
+  filter(is_detectable,
+         feature == "distal_exon") |>
+  summarize(median = median(length),
+            .by = has_ds)
+
+# d_af |>
+#   filter(is_detectable) |>
+#   filter(feature == "distal_exon") |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_density(aes(x = length, fill = has_ds),
+#                alpha = .5) +
+#   scale_x_log10(labels = scales::label_comma()) +
+#   scale_fill_manual(values = c("grey30", "darkred")) +
+#   scale_y_continuous(limits = c(0,1.2)) +
+#   theme(legend.position = "none") +
+#   xlab("Alternative first exon, distal exon length (bp)")
+# 
+# # ggsave("af_distal_exon_length_density.pdf", path = export_dir,
+# #        width = 10, height = 7, units = "cm")
 
 d_af |>
   filter(is_detectable) |>
   filter(feature == "distal_exon") |>
   ggplot() +
   theme_classic() +
-  geom_density(aes(x = length, fill = has_ds),
-               alpha = .5) +
-  scale_x_log10() +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_af_de_med,
+             linetype = 'dashed', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_y_continuous(limits = c(0,1.2)) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal exon length (bp)")
+  xlab("Alternative first exon, distal exon length (bp)") + ylab(NULL)
 
-# ggsave("af_distal_exon_length_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
+# ggsave("ridge_af_distal_exon_length_density.pdf", path = export_dir,
+#        width = 10, height = 7, units = "cm")
 
+
+
+
+# af dist intron length
+
+
+# d_af |>
+#   filter(is_detectable) |>
+#   filter(feature == "distal_intron") |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_density(aes(x = length, fill = has_ds),
+#                alpha = .5) +
+#   scale_x_log10(limits = c(100, 40000)) +
+#   scale_fill_manual(values = c("grey30", "darkred")) +
+#   scale_y_continuous(limits = c(0,1.2)) +
+#   theme(legend.position = "none") +
+#   xlab("Alternative first exon, distal intron length (bp)")
+# 
+# # ggsave("af_distal_intron_length_density.pdf", path = export_dir,
+# #        width = 15, height = 8, units = "cm")
+
+d_af_di_med <- d_af |>
+  filter(is_detectable,
+         feature == "distal_intron") |>
+  summarize(median = median(length),
+            .by = has_ds)
 
 d_af |>
   filter(is_detectable) |>
   filter(feature == "distal_intron") |>
   ggplot() +
   theme_classic() +
-  geom_density(aes(x = length, fill = has_ds),
-               alpha = .5) +
-  scale_x_log10(limits = c(100, 40000)) +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_af_di_med,
+             linetype = 'dashed', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_y_continuous(limits = c(0,1.2)) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal intron length (bp)")
+  xlab("Alternative first exon, distal intron length (bp)") + ylab(NULL)
 
-# ggsave("af_distal_intron_length_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
+# ggsave("ridge_af_distal_intron_length_density.pdf", path = export_dir,
+#        width = 10, height = 7, units = "cm")
+
+
+
+# af prox exon length
+
+d_af_pe_med <- d_af |>
+  filter(is_detectable,
+         feature == "proximal_exon") |>
+  summarize(median = median(length),
+            .by = has_ds)
+
+
+# d_af |>
+#   filter(is_detectable) |>
+#   filter(feature == "proximal_exon") |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_density(aes(x = length, fill = has_ds),
+#                alpha = .5) +
+#   scale_x_log10() +
+#   scale_fill_manual(values = c("grey30", "darkred")) +
+#   scale_y_continuous(limits = c(0,1.2)) +
+#   theme(legend.position = "none") +
+#   xlab("Alternative first exon, proximal exon length (bp)")
+# 
+# # ggsave("af_proximal_exon_length_density.pdf", path = export_dir,
+# #        width = 15, height = 8, units = "cm")
 
 
 d_af |>
@@ -1153,88 +1283,73 @@ d_af |>
   filter(feature == "proximal_exon") |>
   ggplot() +
   theme_classic() +
-  geom_density(aes(x = length, fill = has_ds),
-               alpha = .5) +
-  scale_x_log10() +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3, bandwidth = .1) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_af_pe_med,
+             linetype = 'dashed', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_y_continuous(limits = c(0,1.2)) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal exon length (bp)")
+  xlab("Alternative first exon, proximal exon length (bp)") + ylab(NULL)
 
-# ggsave("af_proximal_exon_length_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
-
-
+# ggsave("ridge_af_proximal_exon_length_density.pdf", path = export_dir,
+#        width = 10, height = 7, units = "cm")
 
 
-# AF GC content
+
+
+
+
+# AF dist intr conservation
+d_af_di_cons_med <- d_af |>
+  filter(is_detectable,
+         feature == "distal_intron") |>
+  summarize(median = median(conservation),
+            .by = has_ds)
+
+
+
+# d_af |>
+#   filter(is_detectable) |>
+#   filter(feature == "distal_intron") |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_density(aes(x = conservation, fill = has_ds),
+#                alpha = .5, bounds = c(0,1)) +
+#   scale_fill_manual(values = c("grey30", "darkred")) +
+#   scale_x_continuous(limits = c(0,1)) +
+#   theme(legend.position = "none") +
+#   xlab("Alternative first exon, distal intron conservation score")
+# 
+# # ggsave("af_distal_intron_conservation_density.pdf", path = export_dir,
+# #        width = 15, height = 8, units = "cm")
+
+
+
 
 d_af |>
   filter(is_detectable) |>
   filter(feature == "distal_intron") |>
   ggplot() +
   theme_classic() +
-  geom_density(aes(x = percent_GC, fill = has_ds),
-               alpha = .5) +
+  ggridges::geom_density_ridges(aes(x = conservation, y = has_ds, fill = has_ds),
+                                scale = 3) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_af_di_cons_med,
+             linetype = 'dashed', linewidth = 1) +
   scale_fill_manual(values = c("grey30", "darkred")) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal intron GC content (%)")
+  xlab("Alternative first exon, distal intron conservation score") + ylab(NULL)
 
-# ggsave("af_distal_intron_gc_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
-
-
-d_af |>
-  filter(is_detectable) |>
-  filter(feature == "proximal_intron") |>
-  ggplot() +
-  theme_classic() +
-  geom_density(aes(x = percent_GC, fill = has_ds),
-               alpha = .5) +
-  scale_fill_manual(values = c("grey30", "darkred")) +
-  theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal intron GC content (%)")
-
-# ggsave("af_proximal_intron_gc_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
-
-
-
-
-# AF conservation
-
-
-d_af |>
-  filter(is_detectable) |>
-  filter(feature == "distal_intron") |>
-  ggplot() +
-  theme_classic() +
-  geom_density(aes(x = conservation, fill = has_ds),
-               alpha = .5, bounds = c(0,1)) +
-  scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_x_continuous(limits = c(0,1)) +
-  theme(legend.position = "none") +
-  xlab("Alternative first exon, distal intron conservation score")
-
-# ggsave("af_distal_intron_conservation_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
-
-
-
-d_af |>
-  filter(is_detectable) |>
-  filter(feature == "proximal_intron") |>
-  ggplot() +
-  theme_classic() +
-  geom_density(aes(x = conservation, fill = has_ds),
-               alpha = .5, bounds = c(0,1)) +
-  scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_x_continuous(limits = c(0,1)) +
-  theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal intron conservation score")
-
-# ggsave("af_proximal_intron_conservation_density.pdf", path = export_dir,
-#        width = 15, height = 8, units = "cm")
+# ggsave("ridge_af_distal_intron_conservation_density.pdf", path = export_dir,
+#        width = 10, height = 7, units = "cm")
 
 
 
@@ -1280,9 +1395,9 @@ skipped_exons2 |>
   theme_classic() +
   geom_histogram(aes(x = exon_length,
                      fill = has_ds),
-                 bins = 40,
+                 bins = 30,
                  color = 'white') +
-  scale_x_log10() +
+  scale_x_log10(labels = scales::label_comma()) +
   geom_vline(aes(xintercept = 27),
              color = 'grey10', linetype = "dashed") +
   scale_fill_manual(values = c("grey30", "darkred")) +
@@ -1309,7 +1424,7 @@ skipped_exons2 |>
 #        width = 20, height = 12, units = "cm")
 
 skipped_exons2 |>
-  mutate(microexon = exon_length <= 30) |>
+  mutate(microexon = exon_length <= 27) |>
   # summarize(prop_ds = mean(has_ds),
   #           .by = microexon) |>
   ggplot() +
@@ -1319,10 +1434,86 @@ skipped_exons2 |>
   scale_fill_manual(values = c("grey30", "darkred"))
 
 
+#~ Microexons: nb of diff pairs ----
+
+skipped_ex_by_pairs <- skipped_exons |>
+  filter(detectable) |>
+  # mutate(is_microexon = (exon_length <= 27)) |>
+  summarize(nb_ds = sum(is_ds),
+            nb_tot = n(),
+            nb_non_ds = sum(!is_ds),
+            .by = c(event_id, exon_length))
+
+
+stopifnot(all(skipped_ex_by_pairs$nb_ds + skipped_ex_by_pairs$nb_non_ds == skipped_ex_by_pairs$nb_tot))
+
+# skipped_ex_by_pairs |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_point(aes(x = exon_length, y = nb_ds/nb_tot)) +
+#   scale_x_log10(labels = scales::label_comma()) +
+#   geom_vline(aes(xintercept = 27),
+#              color = 'grey50', linetype = "dashed")
+# 
+# skipped_ex_by_pairs |>
+#   filter(nb_tot > 10) |>
+#   mutate(is_microexon = exon_length <= 27,
+#          prop_ds = nb_ds/nb_tot) |>
+#   summarize(mean_prop_ds = mean(prop_ds),
+#             sd_prop_ds = sd(prop_ds),
+#             .by = is_microexon) |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_col(aes(x = is_microexon, y = prop_ds))
+# 
+# skipped_ex_by_pairs |>
+#   filter(nb_tot > 10) |>
+#   mutate(is_microexon = exon_length <= 27,
+#          prop_ds = nb_ds/nb_tot) |>
+#   ggplot() +
+#   theme_classic() +
+#   geom_density(aes(x = prop_ds, fill = is_microexon),
+#                alpha = .2)
+
+
+pos <- ggbeeswarm::position_quasirandom()
+skipped_ex_by_pairs |>
+  filter(nb_tot > 10) |>
+  mutate(is_microexon = exon_length <= 27,
+         prop_ds = nb_ds/nb_tot) |>
+  mutate(gene_name = if_else((is_microexon & prop_ds > .15) |
+                               (!is_microexon & prop_ds > .38),
+                               str_split_i(event_id, ";",1) |>
+                               i2s(gids, warn_missing = TRUE),
+                             "")) |>
+  mutate(type = if_else(is_microexon, "microexon", "longer exon")) |>
+  ggplot(aes(x = type, y = prop_ds, label = gene_name)) +
+  theme_classic() +
+  geom_point(position = pos) +
+  ggrepel::geom_text_repel(box.padding = 1.2, position = pos, color = 'grey40') +
+  scale_y_continuous(labels = scales::label_percent()) +
+  xlab(NULL) + ylab("Proportion of neuron pairs dAS")
+
+
+# ggsave("microexons_ds_pairs.pdf", path = export_dir,
+#        width = 16, height = 11, units = "cm")
 
 
 
+skipped_ex_by_pairs |>
+  filter(nb_tot > 10) |>
+  mutate(is_microexon = exon_length <= 27,
+         prop_ds = nb_ds/nb_tot) |>
+  summarize(mean_prop_ds = mean(prop_ds),
+            .by = is_microexon)
 
 
+skipped_ex_by_pairs_filt <- skipped_ex_by_pairs |>
+  filter(nb_tot > 10) |>
+  mutate(is_microexon = exon_length <= 27,
+         prop_ds = nb_ds/nb_tot)
+
+wilcox.test(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
+boxplot(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
 
 

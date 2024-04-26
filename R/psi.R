@@ -266,6 +266,106 @@ psi_by_neuron |> filter(event_id %in% ev) |>
 
 
 
+# Microexon specificity ----
+
+source("R/extract_event_coordinates.R")
+
+exons_psi_neur <- psi_by_neuron |>
+  filter(event_type == "SE") |>
+  separate_wider_regex(event_id,
+                       patterns = c(gene_id2 = "^WBGene[0-9]{8}", ";",
+                                    event_type2 = "[SEA53MXRIFL]{2}", "\\:",
+                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+                       cols_remove = FALSE) |>
+  select(-event_type2, -gene_id2) |>
+  nest(psi = c(neuron_id, PSI_neuron, nb_samples)) |>
+  mutate(exon_length = extract_coords("SE", event_coordinates)[["exon_length"]]) |>
+  unnest(psi) |>
+  select(event_id, gene_id, neuron_id, nb_samples, exon_length, nb_samples, PSI_neuron)
+
+
+
+
+exons_specificity <- exons_psi_neur |>
+  filter(!is.na(PSI_neuron),
+         nb_samples > 2) |>
+  summarize(specificity = min_pairwise_diff(PSI_neuron) / sd(PSI_neuron, na.rm = TRUE),
+            sd = sd(PSI_neuron, na.rm = TRUE),
+            var = var(PSI_neuron, na.rm = TRUE),
+            nb_neurons = n(),
+            .by = c("event_id", "gene_id","exon_length"))
+
+
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = specificity),
+                               alpha = .5) +
+  scale_x_log10() +
+  ylab("Specificity index") +
+  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  mutate(microexon = exon_length <= 27) |>
+  summarize(specificity = mean(specificity),
+            .by = microexon)
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  mutate(microexon = exon_length <= 27) |>
+  mutate(microexon = sample(microexon)) |>
+  summarize(specificity = mean(specificity),
+            .by = microexon)
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  mutate(microexon = exon_length <= 27) |>
+  # mutate(microexon = sample(microexon)) |>
+  summarize(specificity = mean(sd),
+            .by = microexon)
+
+
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = sd, y = specificity, color = exon_length <= 27),
+                               alpha = .5) +
+  # scale_x_log10() +
+  ylab("Specificity index") +
+  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey')
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = var),
+                               alpha = .5) +
+  scale_x_log10() +
+  ylab("Variance") +
+  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
+
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  mutate(microexon = exon_length <= 27) |>
+  # mutate(microexon = sample(microexon)) |>
+  summarize(specificity = median(var),
+            .by = microexon)
+
+
+
+
+
+
 
 
 
