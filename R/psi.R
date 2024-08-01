@@ -8,10 +8,10 @@ library(tidyverse)
 
 library(wbData)
 
-tx2g <- wb_load_tx2gene(289)
+# tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-
+export_dir <- "data/outs/2408_fig"
 
 # Load ----
 
@@ -71,6 +71,122 @@ ggplot(psi_by_neuron) +
 
 
 
+max_deltapsi <- function(psi){
+  
+  psi <- psi[! is.na(psi)]
+  n <- length(psi)
+  
+  if(n < 2) return(NA_real_)
+  
+  diffs <- lapply(seq_len(n - 1),
+                  \(neur){
+                    DescTools::CombPairs(psi[neur], psi[-(1:neur)]) |>
+                      as.matrix() |>
+                      matrixStats::rowDiffs() |>
+                      abs() |>
+                      as.numeric()
+                  })
+  dpsis <-  unlist(diffs)
+  
+  max(dpsis)
+}
+
+
+
+dpsi_gini <- function(psi){
+  
+  psi <- psi[! is.na(psi)]
+  n <- length(psi)
+  
+  if(n < 2) return(NA_real_)
+  
+  diffs <- lapply(seq_len(n - 1),
+                  \(neur){
+                    DescTools::CombPairs(psi[neur], psi[-(1:neur)]) |>
+                      as.matrix() |>
+                      matrixStats::rowDiffs() |>
+                      abs() |>
+                      as.numeric()
+                  })
+  dpsis <-  unlist(diffs)
+  
+  DescTools::Gini(dpsis)
+}
+
+psi_var <- psi_by_neuron |>
+  filter(!is.na(PSI_neuron),
+         nb_samples > 2) |>
+  summarize(max_dpsi = max_deltapsi(PSI_neuron),
+            gini = dpsi_gini(PSI_neuron),
+            sd_psi = sd(PSI_neuron, na.rm = TRUE),
+            nb_neurons = n(),
+            .by = c("event_id", "gene_id","event_type"))
+
+
+
+
+
+## Plot Gini ----
+
+psi_var_plot <- psi_var |>
+  filter(nb_neurons > 5) |>
+  mutate(event_type = case_match(event_type,
+                                 "A3" ~ "Alt. 3' ss",
+                                 "A5" ~ "Alt. 5' ss",
+                                 "AF" ~ "Alt. first exon",
+                                 "AL" ~ "Alt. last exon",
+                                 "MX" ~ "Multiple exons",
+                                 "RI" ~ "Intron retention",
+                                 "SE" ~ "Cassette exon")) |>
+  mutate(gene_name = i2s(gene_id, gids))
+
+psi_var_plot |>
+  ggplot() +
+  theme_classic() +
+  ylab(expression(Gini~index*group("(",group("|",Delta*PSI,"|"),")"))) +
+  xlab(expression(max*group("(",group("|",Delta*PSI,"|"),")"))) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme(legend.position = "none") +
+  annotate("segment", x = .5, xend = 1, y = .5, linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = .5), linetype = 'dashed', color = 'grey') +
+  facet_wrap(~event_type) +
+  geom_point(aes(x = max_dpsi, y = gini, color = event_type),
+             alpha = .3) +
+  geom_text(data = psi_var_plot |>
+              summarize(low_dpsi = sum( max_dpsi <= .5),
+                        low_gini = sum(max_dpsi > .5 & gini <= .5),
+                        high_gini = sum(max_dpsi > .5 & gini > .5),
+                        .by = event_type) |>
+              pivot_longer(-event_type,
+                           names_to = "class",
+                           values_to = "number") |>
+              mutate(prop = round(100*number / sum(number), 1),
+                     .by = event_type) |>
+              mutate(label = paste0(number, "\n(",prop,"%)")) |>
+              left_join(tibble(x = c(0, 1, 1),
+                               y = c(.1, .1, .9),
+                               hjust = c(0,1,1),
+                               class = c("low_dpsi","low_gini","high_gini"))),
+            aes(x=x,y=y,label=label,hjust = hjust))
+  # ggrepel::geom_text_repel(aes(x = max_dpsi, y = gini, label = gene_name))
+
+ggsave("deltapsi_gini_max.pdf", path = export_dir,
+       width = 16, height = 20, units = "cm")
+
+# psi_var |>
+#   mutate(gene_name = i2s(gene_id, gids)) |>
+#   select(event_id, event_type, gene_id, gene_name, nb_neurons, max_dpsi, gini, sd_psi) |>
+#   readr::write_csv(paste0(export_dir, "/psi_gini.csv"))
+
+
+####
+
+
+
+#~ explorations of Gini deltapsi etc ----
+
+# previous metric, similar to Gini in a way
 min_pairwise_diff <- function(x){
   
   x <- x[! is.na(x)]
@@ -91,23 +207,173 @@ min_pairwise_diff <- function(x){
 }
 
 
+dpsi_mid <- function(psi){
+  
+  psi <- psi[! is.na(psi)]
+  n <- length(psi)
+  
+  if(n < 2) return(NA_real_)
+  
+  diffs <- lapply(seq_len(n - 1),
+                  \(neur){
+                    DescTools::CombPairs(psi[neur], psi[-(1:neur)]) |>
+                      as.matrix() |>
+                      matrixStats::rowDiffs() |>
+                      abs() |>
+                      as.numeric()
+                  })
+  dpsis <-  unlist(diffs)
+  
+  mean(dpsis > .5)
+}
 
 
-psi_var <- psi_by_neuron |>
-  filter(!is.na(PSI_neuron),
-         nb_samples > 2) |>
-  summarize(specificity = min_pairwise_diff(PSI_neuron) / sd(PSI_neuron, na.rm = TRUE),
+fake_psi <- bind_rows(
+  tibble(event_id = rep("a", 7),
+         PSI_neuron = rep(.5, 7) + rnorm(7, sd = .01)),
+  tibble(event_id = rep("b", 7),
+         PSI_neuron = rep(.9, 7) + rnorm(7, sd = .01)),
+  tibble(event_id = rep("c", 7),
+         PSI_neuron = rep(.1, 7) + rnorm(7, sd = .01)),
+  tibble(event_id = rep("d", 7),
+         PSI_neuron = rep(.1, 6) |> c(.9) + rnorm(7, sd = .01)),
+  tibble(event_id = rep("e", 7),
+         PSI_neuron = rep(.1, 4) |> c(rep(.9, 3)) + rnorm(7, sd = .01)),
+  tibble(event_id = rep("f", 7),
+         PSI_neuron = seq(.1,.9, length.out = 7) + rnorm(7, sd = .01))
+)
+
+fake_psi_var <- fake_psi |>
+  summarize(specificity = dpsi_mid(PSI_neuron),
+            max_dpsi = max_deltapsi(PSI_neuron),
+            gini = dpsi_gini(PSI_neuron),
             sd = sd(PSI_neuron, na.rm = TRUE),
             nb_neurons = n(),
-            .by = c("event_id", "gene_id","event_type"))
+            .by = c("event_id"))
+
+fake_psi_var |>
+  ggplot() +
+  theme_classic() +
+  geom_label(aes(x = max_dpsi, y = gini, label = event_id),
+             alpha = .1)
+fake_psi_var |>
+  ggplot() +
+  theme_classic() +
+  geom_label(aes(x = max_dpsi, y = specificity, label = event_id),
+             alpha = .1)
 
 psi_var |>
-  # filter(n > 10) |>
+  # bind_rows(fake_psi_var |> mutate(event_type = "fake")) |>
+  filter(nb_neurons > 5) |>
+  ggplot() +
+  theme_classic() +
+  facet_wrap(~event_type) +
+  geom_point(aes(x = max_dpsi, y = gini, color = event_type),
+             alpha = .5) +
+  # ylab(expression(symbol("%")~group("|",Delta*PSI,"|")>0.5)) +
+  ylab("Gini index") +
+  xlab(expression(max~group("|",Delta*PSI,"|"))) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  geom_hline(aes(yintercept = .5), linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = .5), linetype = 'dashed', color = 'grey')
+
+
+psi_var |>
+  bind_rows(fake_psi_var |> mutate(event_type = "fake")) |>
+  filter(nb_neurons > 5,
+         max_dpsi > .5) |>
+  ggplot() +
+  theme_classic() +
+  facet_wrap(~event_type) +
+  geom_point(aes(x = sd, y = gini, color = event_type),
+             alpha = .5)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+fake_psi_var |>
+  filter(nb_neurons > 5,
+         max_dpsi > .5) |>
+  ggplot() +
+  theme_classic() +
+  geom_label(aes(x = sd, y = gini, label = event_id),
+             alpha = .1)
+
+
+
+psi_var |>
+  filter(nb_neurons > 5) |>
+  ggplot() +
+  theme_classic() +
+  facet_wrap(~event_type) +
+  geom_histogram(aes(x = max_dpsi, color = event_type),
+             alpha = .5) +
+  xlab(expression(max~group("|",Delta~PSI,"|")))
+
+
+# check most variable
+ev <- psi_var |>
+  filter(specificity > .5, nb_neurons > 5) |>
+  slice_head(n = 1) |>
+  pull(event_id)
+
+psi <- psi_by_neuron |>
+  filter(event_id == ev) |>
+  pull(PSI_neuron)
+  
+plot(psi)
+
+mat_extr_var <- psi_by_neuron |>
+  filter(event_id %in% extremal_af$event_id) |>
+  pivot_wider(id_cols = event_id,
+              names_from = neuron_id,
+              values_from = PSI_neuron) |>
+  column_to_rownames("event_id") |>
+  as.matrix()
+
+annot_df <- psi_by_neuron |>
+  filter(event_id %in% extremal_af$event_id) |>
+  select(-PSI_neuron, -neuron_id, -nb_samples) |>
+  distinct() |>
+  left_join(filt_psi_var,
+            by = c("event_id", "gene_id", "event_type")) |>
+  column_to_rownames("event_id") |>
+  select(specificity) |>
+  arrange(desc(specificity))
+
+pheatmap::pheatmap(mat_extr_var[rownames(annot_df),],
+                   annotation_row = annot_df,
+                   cluster_rows = FALSE,
+                   cluster_cols = FALSE,
+                   show_rownames = FALSE,
+                   # filename = file.path(export_dir, "heat_variance_af.pdf"),
+                   width = 10,
+                   height = 7,
+                   main = "AF",
+                   border_color = NA)
+
+
+
+psi_var |>
+  filter(nb_neurons > 10) |>
   ggplot() +
   theme_classic() +
   ggbeeswarm::geom_quasirandom(aes(x = sd, y = specificity),
                                alpha = .5) +
-  ylab("Specificity index") + xlab(NULL) +
+  ylab("Specificity index") +
   geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey')
 
 
