@@ -130,6 +130,7 @@ psi_var <- psi_by_neuron |>
 
 psi_var_plot <- psi_var |>
   filter(nb_neurons > 5) |>
+  filter(event_type != "RI") |>
   mutate(event_type = case_match(event_type,
                                  "A3" ~ "Alt. 3' ss",
                                  "A5" ~ "Alt. 5' ss",
@@ -171,8 +172,8 @@ psi_var_plot |>
             aes(x=x,y=y,label=label,hjust = hjust))
   # ggrepel::geom_text_repel(aes(x = max_dpsi, y = gini, label = gene_name))
 
-ggsave("deltapsi_gini_max.pdf", path = export_dir,
-       width = 16, height = 20, units = "cm")
+# ggsave("deltapsi_gini_max.pdf", path = export_dir,
+#        width = 10, height = 8, units = "cm", scale = 1.8)
 
 # psi_var |>
 #   mutate(gene_name = i2s(gene_id, gids)) |>
@@ -180,7 +181,169 @@ ggsave("deltapsi_gini_max.pdf", path = export_dir,
 #   readr::write_csv(paste0(export_dir, "/psi_gini.csv"))
 
 
+
+#~ Gini microexons ----
+
+
+
+
+source("R/extract_event_coordinates.R")
+
+
+
+
+exons_psi_neur <- psi_by_neuron |>
+  filter(event_type == "SE") |>
+  separate_wider_regex(event_id,
+                       patterns = c(gene_id2 = "^WBGene[0-9]{8}", ";",
+                                    event_type2 = "[SEA53MXRIFL]{2}", "\\:",
+                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+                       cols_remove = FALSE) |>
+  select(-event_type2, -gene_id2) |>
+  nest(psi = c(neuron_id, PSI_neuron, nb_samples)) |>
+  mutate(exon_length = extract_coords("SE", event_coordinates)[["exon_length"]]) |>
+  unnest(psi) |>
+  select(event_id, gene_id, neuron_id, nb_samples, exon_length, nb_samples, PSI_neuron)
+
+all.equal(psi_by_neuron |> filter(event_type == "SE") |> select(event_id, gene_id,neuron_id,nb_samples,PSI_neuron),
+          exons_psi_neur |> select(event_id, gene_id,neuron_id,nb_samples,PSI_neuron))
+
+
+
+exons_psi_var <- exons_psi_neur |>
+  filter(!is.na(PSI_neuron),
+         nb_samples > 2) |>
+  mutate(is_microexon = exon_length <= 27) |>
+  summarize(max_dpsi = max_deltapsi(PSI_neuron),
+            gini = dpsi_gini(PSI_neuron),
+            sd_psi = sd(PSI_neuron, na.rm = TRUE),
+            nb_neurons = n(),
+            .by = c("event_id", "gene_id","is_microexon"))
+
+
+exons_psi_var_plot <- exons_psi_var |>
+  filter(nb_neurons > 5) |>
+  mutate(exon_type = if_else(is_microexon,
+                              "Microexon",
+                              "Longer exon")) |>
+  mutate(gene_name = i2s(gene_id, gids))
+
+
+exons_psi_var_plot |>
+  ggplot() +
+  theme_classic() +
+  ylab(expression(Gini~index*group("(",group("|",Delta*PSI,"|"),")"))) +
+  xlab(expression(max*group("(",group("|",Delta*PSI,"|"),")"))) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_color_manual(values = c("#6F94CD", "#6F94CD")) +
+  theme(legend.position = "none") +
+  annotate("segment", x = .5, xend = 1, y = .5, linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = .5), linetype = 'dashed', color = 'grey') +
+  facet_wrap(~exon_type) +
+  geom_point(aes(x = max_dpsi, y = gini, color = exon_type),
+             alpha = .3) +
+  geom_text(data = exons_psi_var_plot |>
+              summarize(low_dpsi = sum( max_dpsi <= .5),
+                        low_gini = sum(max_dpsi > .5 & gini <= .5),
+                        high_gini = sum(max_dpsi > .5 & gini > .5),
+                        .by = exon_type) |>
+              pivot_longer(-exon_type,
+                           names_to = "class",
+                           values_to = "number") |>
+              mutate(prop = round(100*number / sum(number), 1),
+                     .by = exon_type) |>
+              mutate(label = paste0(number, "\n(",prop,"%)")) |>
+              left_join(tibble(x = c(0, 1, 1),
+                               y = c(.1, .1, .9),
+                               hjust = c(0,1,1),
+                               class = c("low_dpsi","low_gini","high_gini"))),
+            aes(x=x,y=y,label=label,hjust = hjust))
+
+
+ggsave("deltapsi_gini_max_micro.pdf", path = export_dir,
+       width = 6.67, height = 4, units = "cm", scale = 1.8)
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = specificity),
+                               alpha = .5) +
+  scale_x_log10() +
+  ylab("Specificity index") +
+  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  mutate(microexon = exon_length <= 27) |>
+  summarize(specificity = mean(specificity),
+            .by = microexon)
+
+
+exons_specificity |>
+  filter(nb_neurons > 2, sd > .1) |>
+  mutate(microexon = exon_length <= 27) |>
+  mutate(microexon = sample(microexon)) |>
+  summarize(specificity = mean(specificity),
+            .by = microexon)
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  mutate(microexon = exon_length <= 27) |>
+  # mutate(microexon = sample(microexon)) |>
+  summarize(specificity = mean(sd),
+            .by = microexon)
+
+
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = sd, y = specificity, color = exon_length <= 27),
+                               alpha = .5) +
+  # scale_x_log10() +
+  ylab("Specificity index") +
+  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey')
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  ggplot() +
+  theme_classic() +
+  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = var),
+                               alpha = .5) +
+  scale_x_log10() +
+  ylab("Variance") +
+  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
+
+
+exons_specificity |>
+  filter(nb_neurons > 2) |>
+  mutate(microexon = exon_length <= 27) |>
+  # mutate(microexon = sample(microexon)) |>
+  summarize(specificity = median(var),
+            .by = microexon)
+
+
+
+
+
+
+
+
+
+
+
+
+
 ####
+
+
+
 
 
 
