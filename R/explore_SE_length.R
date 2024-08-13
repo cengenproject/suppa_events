@@ -5,13 +5,12 @@ library(tidyverse)
 
 library(wbData)
 
-tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
 export_dir <- "data/outs/2408_fig"
 
 
-dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
+dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs")
 
 
 
@@ -33,26 +32,24 @@ se_coords <- se_coords[[1]]
 
 d_se <- dpsi |>
   filter(event_type == "SE") |>
+  filter(detectable) |>
   left_join(coords_all$coords[[which(coords_all$event_type == "SE")]],
             by = "event_id") |>
   summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
             .by = c(upstream_intron_length, downstream_intron_length,
                     exon_length,
                     event_id, gene_id, gene_name)) |>
-  pivot_longer(-c(event_id,gene_id, gene_name, has_ds, is_detectable),
+  pivot_longer(-c(event_id,gene_id, gene_name, has_ds),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length")
 
 d_se_med <- d_se |>
-  filter(is_detectable,
-         feature == "exon") |>
+  filter(feature == "exon") |>
   summarize(median = median(length),
             .by = has_ds)
 
 d_se |>
-  filter(is_detectable) |>
   filter(feature == "exon") |>
   mutate(has_ds = if_else(has_ds, "dAS", "non-dAS") |>
            factor(levels = c("non-dAS", "dAS"))) |>
@@ -78,18 +75,27 @@ d_se |>
   mutate(length_is_triple = (length %% 3) == 0) |>
   summarize(n_frame = sum(length_is_triple),
          n_not_frame = sum(!length_is_triple),
-         .by = c(is_detectable, has_ds)) |>
+         .by = c(has_ds)) |>
   mutate(prop_in_frame = round( 100 * n_frame / (n_frame + n_not_frame) ))
 
 
 d_se |>
   filter(feature == "exon") |>
   mutate(length_is_triple = (length %% 3) == 0) |>
-  filter(is_detectable, has_ds, !length_is_triple) |>
+  filter(has_ds, !length_is_triple) |>
   slice_sample(n = 1) |>
   as.data.frame()
 
 
+
+
+dpsi |>
+  filter(gene_name == "par-3",
+         event_type == "SE",
+         detectable) |>
+  filter(p.val < .1) |>
+  arrange(desc(abs(dPSI))) |>
+  View()
 
 
 
