@@ -19,13 +19,13 @@ WS="WS289"
 
 events_file="data/events/${WS}_all_strict.ioe"
 tx_tpm="data/231208_str_q_tx_TPM.tsv"
-psi_file="data/240301b_psiPerEvent.psi"
+psi_file="data/240813_psiPerEvent_.psi"
 
 # note, the "prefix" should not be a separate directory!
-out_dpsi="data/240304_dpsi/"
-out_prefix="240304"
+out_dpsi="data/240813_dpsi/"
+out_prefix="240813"
 
-split_psi_dir="data/intermediates/240301_split_psi"
+split_psi_dir="data/intermediates/240813_split_psi"
 
 
 mkdir -p $out_dpsi
@@ -84,6 +84,7 @@ suppa.py diffSplice \
     --psi $split_psi_dir/*.psi \
     --tpm $split_psi_dir/*.tpm \
     --input $events_file \
+    --lower-bound 0.3 \
     --combination \
     --gene-correction \
     --output $out_prefix
