@@ -59,7 +59,7 @@ dpsi <- dpsi_dta |>
 #                values_to = "expressed") |>
 #   mutate(is_expressed = expressed == 1L) |> select(-expressed)
 
-gene_expression_table <- cengenDataSC::cengen_sc_2_bulk |>
+gene_expression_table <- cengenDataSC::cengen_sc_3_bulk |>
   as.data.frame() |>
   rownames_to_column("gene_id") |>
   pivot_longer(-gene_id,
@@ -180,6 +180,8 @@ dpsi |>
 # see below ("check a few events in genome browser"): low dPSI is often meaningless and in the noise
 
 dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
+dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs") |>
+  filter(event_type != "RI")
 
 
 
@@ -295,14 +297,15 @@ dpsi |>
   select(event_type, category) |>
   ggplot() +
   theme_classic() +
-  geom_bar(aes(x = event_type, fill = category)) +
   scale_fill_manual(values = c("grey90", "grey30", "darkred")) +
   xlab(NULL) + ylab("Number of events") +
   theme(legend.position = "top",
         legend.title = element_blank(),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   coord_flip() +
-  scale_y_continuous(labels = scales::label_comma())
+  scale_y_continuous(labels = scales::label_comma()) +
+  geom_bar(aes(x = event_type, fill = category),
+           color = 'black')
 
 # ggsave("ds_per_type.pdf", path = export_dir,
 #        width = 16, height = 9, units = "cm")
@@ -1022,7 +1025,7 @@ gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
        
 # Stat tests ----
 
-tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_ri, d_se),
+tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
         ~ .x |>
           rename(event_type = type.x) |>
           filter(is_detectable) |>
@@ -1055,7 +1058,7 @@ tests |>
 
 
 medians <- map_dfr(
-  list(d_a3, d_a5, d_af, d_al, d_mx, d_ri, d_se),
+  list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
   
   ~ .x |>
     rename(event_type = type.x) |>
@@ -1152,7 +1155,7 @@ d_se |>
 
 
 # ggsave("ridge_se_exon_length_density.pdf", path = export_dir,
-#        width = 10, height = 7, units = "cm")
+#        width = 5, height = 5, units = "cm")
 
 
 
@@ -1199,7 +1202,7 @@ d_af |>
   xlab("Alternative first exon, distal exon length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_distal_exon_length_density.pdf", path = export_dir,
-#        width = 10, height = 7, units = "cm")
+#        width = 5, height = 5, units = "cm")
 
 
 
@@ -1248,7 +1251,7 @@ d_af |>
   xlab("Alternative first exon, distal intron length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_distal_intron_length_density.pdf", path = export_dir,
-#        width = 10, height = 7, units = "cm")
+#        width = 5, height = 5, units = "cm")
 
 
 
@@ -1297,7 +1300,7 @@ d_af |>
   xlab("Alternative first exon, proximal exon length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_proximal_exon_length_density.pdf", path = export_dir,
-#        width = 10, height = 7, units = "cm")
+#        width = 5, height = 5, units = "cm")
 
 
 
@@ -1349,7 +1352,7 @@ d_af |>
   xlab("Alternative first exon, distal intron conservation score") + ylab(NULL)
 
 # ggsave("ridge_af_distal_intron_conservation_density.pdf", path = export_dir,
-#        width = 10, height = 7, units = "cm")
+#        width = 5, height = 5, units = "cm")
 
 
 
@@ -1364,6 +1367,9 @@ d_af |>
 
 
 # Microexons ----
+
+# coords_all <- qs::qread("intermediates/240425_dpsi/240425_all_coords.qs")
+# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
 
 skipped_exons_lengths <- coords_all |>
   filter(event_type == "SE") |>
@@ -1390,6 +1396,7 @@ skipped_exons2 <- skipped_exons |>
   summarize(has_ds = any(is_ds),
             .by = c(exon_length, event_id))
 
+lim_high <- 27
 skipped_exons2 |>
   ggplot() +
   theme_classic() +
@@ -1400,28 +1407,30 @@ skipped_exons2 |>
   scale_x_log10(labels = scales::label_comma()) +
   geom_vline(aes(xintercept = 27),
              color = 'grey10', linetype = "dashed") +
+  geom_vline(aes(xintercept = lim_high),
+             color = 'grey10', linetype = "dashed") +
   scale_fill_manual(values = c("grey30", "darkred")) +
   geom_text(data = tibble(
-    x = c(11, 1000),
-    y = c(60,60),
-    label = c(paste0("Microexons (<= 27 bp)\n",
+    x = c(11, 3000),
+    y = c(90,90),
+    label = c(paste0("Microexons (≤ 27 bp)\n",
                      sum(skipped_exons2$has_ds[skipped_exons2$exon_length <= 27]),
                      "/",
                      sum(skipped_exons2$exon_length <= 27),
                      " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length <= 27]))," %)"),
-              paste0("Other exons (> 27 bp)\n",
-                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length > 27]),
+              paste0("Longer exons (> ",lim_high," bp)\n",
+                     sum(skipped_exons2$has_ds[skipped_exons2$exon_length > lim_high]),
                      "/",
-                     sum(skipped_exons2$exon_length > 27),
-                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length > 27]))," %)"))
+                     sum(skipped_exons2$exon_length > lim_high),
+                     " (", round(100*mean(skipped_exons2$has_ds[skipped_exons2$exon_length > lim_high]))," %)"))
   ),
   aes(x=x,y=y,label=label)) +
   theme(legend.position = "none") +
   xlab("Exon length (bp)") +
   ylab("Number of exons")
 
-# ggsave("microexons.pdf", path = export_dir,
-#        width = 20, height = 12, units = "cm")
+# ggsave("microexons.png", path = export_dir,
+#        width = 12, height = 8, units = "cm")
 
 # test
 skp_ex_test <- skipped_exons2 |>
@@ -1498,7 +1507,7 @@ skipped_ex_by_pairs |>
 
 
 # ggsave("microexons_ds_pairs.pdf", path = export_dir,
-#        width = 16, height = 11, units = "cm")
+#        width = 10, height = 9, units = "cm")
 
 
 
@@ -1517,5 +1526,15 @@ skipped_ex_by_pairs_filt <- skipped_ex_by_pairs |>
 
 wilcox.test(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
 boxplot(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
+
+
+
+#~ export microexons ----
+
+# skipped_exons2 |>
+#   mutate(is_microexon = exon_length <= 27) |>
+#   filter(is_microexon, has_ds) |>
+#   select(event_id) |>
+#   write_csv("data/outs/240426_microexons.csv")
 
 
