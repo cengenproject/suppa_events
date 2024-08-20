@@ -11,7 +11,7 @@ library(wbData)
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240425_fig"
+export_dir <- "data/outs/240813_fig"
 
 
 
@@ -21,7 +21,7 @@ export_dir <- "data/outs/240425_fig"
 # Load ----
 
 
-dpsi_dta <- read.table("data/240304_dpsi/240304.dpsi") |>
+dpsi_dta <- read.table("data/240813_psi/240813.dpsi") |>
   rownames_to_column("event_id") |>
   filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
   as_tibble()
@@ -72,6 +72,14 @@ neurons_here <- unique(gene_expression_table$neuron_id)
 genes_with_known_expr <- unique(gene_expression_table$gene_id)
 
 
+# no filter
+neurons_here <- union(dpsi$neurA[!is.na(dpsi$dPSI)], dpsi$neurB[!is.na(dpsi$dPSI)])
+genes_with_known_expr <- unique(dpsi$gene_id[!is.na(dpsi$dPSI)])
+
+dpsi <- dpsi |>
+  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
+
+
 
 # annotate expression
 
@@ -91,7 +99,7 @@ dpsi <- dpsi |>
 
 
 # qs::qsave(dpsi, "intermediates/240425_dpsi/filt_dpsi.qs")
-
+# qs::qsave(dpsi, "intermediates/240425_dpsi/prefilt_dpsi.qs")
 
 
 
@@ -154,7 +162,7 @@ dpsi <- dpsi |>
 #   pull(mean_PSI) |> diff()
 
 
-my_ev <- sample(filt_dpsi$event_id[filt_dpsi$detectable & abs(filt_dpsi$dPSI) > .3], 1)
+my_ev <- sample(dpsi$event_id[which(abs(dpsi$dPSI) > .3)], 1)
 my_neurA <- sample(dpsi$neurA, 1)
 my_neurB <- sample(dpsi$neurB, 1)
 
@@ -162,10 +170,8 @@ dpsi |>
   filter(event_id == my_ev,
          neurA %in% c(my_neurA, my_neurB),
          neurB %in% c(my_neurA, my_neurB)) |>
-  mutate(detectable = expr_in_neurA & expr_in_neurB) |>
-  select( -expr_in_neurA, -expr_in_neurB) |>
-  mutate(is_ds = p.val < .1 & detectable & abs(dPSI) > .3) |>
-  select(gene_name, event_type, neuron_pair, dPSI,p.val, detectable, is_ds)
+  as.data.frame()
+
 
 
 
@@ -182,6 +188,9 @@ dpsi |>
 dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
 dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs") |>
   filter(event_type != "RI")
+
+dpsi <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi.qs") |>
+  mutate(detectable = !is.na(dPSI))
 
 
 
@@ -280,7 +289,7 @@ dpsi |>
             .by = c(event_id, event_type)) |>
   mutate(
     category = case_when(
-    !gene_expressed ~ "gene not expressed",
+    !gene_expressed ~ "not measured",
     !has_ds ~ "no dAS in neurons",
     .default = "dAS",
   ) |> fct_inorder(),
@@ -317,7 +326,7 @@ dpsi |>
 # Check a few examples in browser
 
 dpsi |>
-  filter(p.val < .05 & detectable &
+  filter(p.val < .1 & detectable &
            dPSI > .3) |>
   slice_sample(n = 1) |>
   as.data.frame()
@@ -330,7 +339,29 @@ dpsi |>
 
 
 dpsi |>
-  filter(p.val < .05 & detectable) |> pull(dPSI) |> abs() |> hist()
+  filter(is_ds) |> pull(dPSI) |> abs() |> hist()
+
+
+ev_diff <- dpsi2 |>
+  filter(detectable, !is.na(dPSI), event_type == "SE") |>
+  anti_join({dpsi |>
+      filter(detectable, !is.na(dPSI))})
+
+i <- sample(nrow(ev_diff), 1)
+
+dpsi |>
+  filter(event_id == ev_diff$event_id[[i]],
+         neuron_pair == ev_diff$neuron_pair[[i]]) |>
+  as.data.frame()
+
+dpsi2 |>
+  filter(event_id == ev_diff$event_id[[i]],
+         neuron_pair == ev_diff$neuron_pair[[i]]) |>
+  as.data.frame()
+
+dpsi |>
+  filter(event_id == ev_diff[[1]])
+
 
 
 
@@ -347,26 +378,12 @@ coords_all <- dpsi |>
                        ~ extract_coords(.x, .y[["event_coordinates"]]))) |>
   mutate(coords = map2(data, coords, ~bind_cols(.x["event_id"],
                                                 .y)))
-# qs::qsave(coords_all, "intermediates/240425_dpsi/240425_all_coords.qs")
+# qs::qsave(coords_all, "intermediates/240814_dpsi/240814_all_coords.qs")
 
 
 
 
 # Check that equivalent to previous
-
-# all.equal(d_a3,
-#           d_a3b)
-# 
-# 
-# all.equal(d_mx,
-#           dpsi |>
-#             filter(event_type == "MX") |>
-#             left_join(coords_all$coords[[which(coords_all$event_type == "MX")]],
-#                       by = "event_id") |>
-#             select(all_of(names(d_mx))))
-
-
-
 
 
 
@@ -375,7 +392,7 @@ coords_all <- dpsi |>
 # Import after running "sequence_properties.R"
 
 
-seq_gc <- qs::qread("intermediates/240425_dpsi/seq_properties.qs") |>
+seq_gc <- qs::qread("intermediates/240814_dpsi/240814_seq_properties.qs") |>
   imap(~ {
     .x |>
       add_column(type = .y) |>
@@ -391,21 +408,22 @@ seq_gc <- qs::qread("intermediates/240425_dpsi/seq_properties.qs") |>
 
 # Import after running "sequence_conservation.R"
 
-seq_dir <- "intermediates/240305_event_coords/"
-cons_files <- list.files(seq_dir, pattern = "*_cons.qs",
-                        full.names = FALSE)
-cons_types <- str_match(cons_files,
-                       "^240305_([as35eflmxri]{2})_cons\\.qs$")[,2] |>
-  toupper()
+
+cons_all <- {
+  cons_all_nested <- qs::qread("intermediates/240814_dpsi/240814_all_cons.qs")
+  
+  pluck(cons_all_nested, "conservation_score") |>
+    set_names(cons_all_nested$event_type)
+}
 
 
-seq_cons <- cons_files |>
-  set_names(cons_types) |>
-  imap(\(.f, .t){
-    qs::qread(file.path(seq_dir, .f)) |>
-      add_column(type = .t)
-  })
-
+# source("R/sequence_conservation.R")
+# 
+# cons_all <- coords_all |>
+#   mutate(conservation_score = map2(event_type, coords,
+#                                    ~ get_cons(.x, .y) ))
+# 
+# # qs::qsave(cons_all, "intermediates/240814_dpsi/240814_all_cons.qs")
 
 
 
@@ -421,13 +439,13 @@ d_a3 <- dpsi |>
   summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(intron_length, overhang_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z]+)_length$",
                values_to = "length") |>
-  left_join(seq_cons[["A3"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["A3"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -446,13 +464,13 @@ d_a5 <- dpsi |>
   summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
             .by = c(intron_length, overhang_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z]+)_length$",
                values_to = "length") |>
-  left_join(seq_cons[["A5"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["A5"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -472,15 +490,15 @@ d_af <- dpsi |>
             by = "event_id") |>
   summarize(has_ds = any(is_ds),
             is_detectable = any(detectable),
-            .by = c(event_id,
+            .by = c(event_type, event_id,
                     distal_exon_length, distal_intron_length,
                     proximal_exon_length, proximal_intron_length)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length") |>
-  left_join(seq_cons[["AF"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["AF"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -502,13 +520,13 @@ d_al <- dpsi |>
             is_detectable = any(detectable),
             .by = c(distal_exon_length, distal_intron_length,
                     proximal_exon_length, proximal_intron_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length")  |>
-  left_join(seq_cons[["AL"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["AL"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -529,8 +547,8 @@ d_mx <- dpsi |>
             .by = c(first_exon_length, first_up_intron_length,
                     first_dn_intron_length, second_exon_length,
                     second_up_intron_length, second_dn_intron_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length") |>
@@ -539,8 +557,8 @@ d_mx <- dpsi |>
                           first_dn_intron = "first_downstream_intron",
                           second_up_intron = "second_upstream_intron",
                           second_dn_intron = "second_downstream_intron")) |>
-  left_join(seq_cons[["MX"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["MX"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -562,13 +580,13 @@ d_ri <- dpsi |>
             is_detectable = any(detectable),
             .by = c(intron_length, upstream_exon_length,
                     downstream_exon_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length") |>
-  left_join(seq_cons[["RI"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["RI"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -589,13 +607,13 @@ d_se <- dpsi |>
             is_detectable = any(detectable),
             .by = c(upstream_intron_length, downstream_intron_length,
                     exon_length,
-                    event_id)) |>
-  pivot_longer(-c(event_id, has_ds, is_detectable),
+                    event_type, event_id)) |>
+  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
                names_to = "feature",
                names_pattern = "^([a-z_]+)_length$",
                values_to = "length") |>
-  left_join(seq_cons[["SE"]] |>
-              pivot_longer(-c(event_id, type),
+  left_join(cons_all[["SE"]] |>
+              pivot_longer(-event_id,
                            names_pattern = "^([a-z_]+)_conservation$",
                            names_to = "feature",
                            values_to = "conservation"),
@@ -1026,22 +1044,22 @@ gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
 # Stat tests ----
 
 tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
-        ~ .x |>
-          rename(event_type = type.x) |>
-          filter(is_detectable) |>
-          group_by(event_type, feature) |>
-          summarize(pval_length = wilcox.test(length[has_ds],
-                                              length[! has_ds])$p.value,
-                    pval_gc = wilcox.test(percent_GC[has_ds],
-                                          percent_GC[! has_ds])$p.value,
-                    pval_conservation = wilcox.test(conservation[has_ds],
-                                                    conservation[! has_ds])$p.value,
-                    .groups = 'drop') |>
-          pivot_longer(starts_with("pval_"),
-                       names_prefix = "pval_",
-                       names_to = "metric",
-                       values_to = "p_val")) |>
-  mutate(padj = p.adjust(p_val))
+                 ~ {.x |>
+                     filter(is_detectable) |>
+                     group_by(event_type, feature) |>
+                     summarize(pval_length = wilcox.test(length[has_ds],
+                                                         length[! has_ds])$p.value,
+                               pval_gc = wilcox.test(percent_GC[has_ds],
+                                                     percent_GC[! has_ds])$p.value,
+                               pval_conservation = wilcox.test(conservation[has_ds],
+                                                               conservation[! has_ds])$p.value,
+                               .groups = 'drop') |>
+                     pivot_longer(starts_with("pval_"),
+                                  names_prefix = "pval_",
+                                  names_to = "metric",
+                                  values_to = "p_val")
+                 }) |>
+  mutate(padj = p.adjust(p_val, method = 'fdr'))
 
 
 
@@ -1061,7 +1079,6 @@ medians <- map_dfr(
   list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
   
   ~ .x |>
-    rename(event_type = type.x) |>
     filter(is_detectable) |>
     group_by(event_type, feature) |>
     summarize(median_length_ds = median(length[has_ds]),
@@ -1429,7 +1446,7 @@ skipped_exons2 |>
   xlab("Exon length (bp)") +
   ylab("Number of exons")
 
-# ggsave("microexons.png", path = export_dir,
+# ggsave("microexons.pdf", path = export_dir,
 #        width = 12, height = 8, units = "cm")
 
 # test

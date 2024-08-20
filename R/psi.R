@@ -11,11 +11,11 @@ library(wbData)
 # tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/2408_fig"
+export_dir <- "data/outs/240813_fig"
 
 # Load ----
 
-psi <- read.delim("data/240301b_psiPerEvent.psi") |>
+psi <- read.delim("data/240813_psi/240813_psiPerEvent.psi") |>
   rownames_to_column("event_id") |>
   as_tibble() |>
   separate_wider_regex(event_id,
@@ -31,23 +31,29 @@ psi_lg <- pivot_longer(psi,
   mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2])
 
 
-# filter by neuron
-gene_expression <- read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv")
+# # filter by neuron
+# gene_expression <- read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv")
+# 
+# neurs_sequenced <- colnames(gene_expression)
+# 
+# 
+# filt_psi_lg <- psi_lg |>
+#   filter(neuron_id %in% neurs_sequenced) |>
+#   left_join(gene_expression |>
+#               as.data.frame() |>
+#               rownames_to_column("gene_id") |>
+#               pivot_longer(-gene_id,
+#                            names_to = "neuron_id",
+#                            values_to = "expressed")) |>
+#   filter(expressed == 1L)
 
-neurs_sequenced <- colnames(gene_expression)
+
+# do not filter by neuron (rely on prefiltering)
+neurs_sequenced <- unique(psi_lg$neuron_id)
 
 
 filt_psi_lg <- psi_lg |>
-  filter(neuron_id %in% neurs_sequenced) |>
-  left_join(gene_expression |>
-              as.data.frame() |>
-              rownames_to_column("gene_id") |>
-              pivot_longer(-gene_id,
-                           names_to = "neuron_id",
-                           values_to = "expressed")) |>
-  filter(expressed == 1L)
-
-
+  filter(! is.na(PSI))
 
 
 # Specificity ----
@@ -261,76 +267,8 @@ exons_psi_var_plot |>
             aes(x=x,y=y,label=label,hjust = hjust))
 
 
-ggsave("deltapsi_gini_max_micro.pdf", path = export_dir,
-       width = 6.67, height = 4, units = "cm", scale = 1.8)
-
-
-exons_specificity |>
-  filter(nb_neurons > 2, sd > .1) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = specificity),
-                               alpha = .5) +
-  scale_x_log10() +
-  ylab("Specificity index") +
-  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey') +
-  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
-
-
-exons_specificity |>
-  filter(nb_neurons > 2, sd > .1) |>
-  mutate(microexon = exon_length <= 27) |>
-  summarize(specificity = mean(specificity),
-            .by = microexon)
-
-
-exons_specificity |>
-  filter(nb_neurons > 2, sd > .1) |>
-  mutate(microexon = exon_length <= 27) |>
-  mutate(microexon = sample(microexon)) |>
-  summarize(specificity = mean(specificity),
-            .by = microexon)
-
-exons_specificity |>
-  filter(nb_neurons > 2) |>
-  mutate(microexon = exon_length <= 27) |>
-  # mutate(microexon = sample(microexon)) |>
-  summarize(specificity = mean(sd),
-            .by = microexon)
-
-
-
-exons_specificity |>
-  filter(nb_neurons > 2) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = sd, y = specificity, color = exon_length <= 27),
-                               alpha = .5) +
-  # scale_x_log10() +
-  ylab("Specificity index") +
-  geom_hline(aes(yintercept = 1), linetype = 'dashed', color = 'grey')
-
-exons_specificity |>
-  filter(nb_neurons > 2) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = exon_length, y = var),
-                               alpha = .5) +
-  scale_x_log10() +
-  ylab("Variance") +
-  geom_vline(aes(xintercept = 27), linetype = 'dashed', color = 'grey')
-
-
-exons_specificity |>
-  filter(nb_neurons > 2) |>
-  mutate(microexon = exon_length <= 27) |>
-  # mutate(microexon = sample(microexon)) |>
-  summarize(specificity = median(var),
-            .by = microexon)
-
-
-
-
+# ggsave("deltapsi_gini_max_micro.pdf", path = export_dir,
+#        width = 6.67, height = 4, units = "cm", scale = 1.8)
 
 
 

@@ -8,7 +8,7 @@ library(GenomicFeatures)
 
 gseq <- readDNAStringSet(wb_get_genome_path(289))
 
-d_all <- qs::qread("intermediates/240425_dpsi/240425_all_coords.qs")
+d_all <- qs::qread("intermediates/240814_dpsi/240814_all_coords.qs")
 
 
 # functions ----
@@ -373,7 +373,7 @@ for(ev_type in c("A5","A3","AF","AL","MX","RI","SE")){
   all_seq_properties[[ev_type]] <- get_seq_properties(ev_type, d_ev_type)
 }
 
-qs::qsave(all_seq_properties, "intermediates/240425_dpsi/seq_properties.qs")
+qs::qsave(all_seq_properties, "intermediates/240814_dpsi/240814_seq_properties.qs")
 
 
 
