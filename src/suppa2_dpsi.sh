@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --partition=week
+#SBATCH --partition=day
 #SBATCH --job-name=suppa_dpsi
 #SBATCH -c 1
 #SBATCH --mem=5G
-#SBATCH --time=3-20:30:00
+#SBATCH --time=23:30:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=alexis.weinreb@yale.edu
 
@@ -29,6 +29,7 @@ split_psi_dir="data/intermediates/240813_split_psi"
 
 
 mkdir -p $out_dpsi
+mkdir -p $split_psi_dir
 
 
 
