@@ -20,9 +20,9 @@ WS="WS289"
 
 
 events_file="data/events/${WS}_all_strict.ioe"
-tx_tpm="data/231208_str_q_tx_TPM.tsv"
+tx_tpm="data/240913_str_q_tx_TPM_filt.tsv"
 
-out_dir="data/240813_psiPerEvent_"
+out_dir="data/240913_psiPerEvent"
 
 mkdir -p $out_dir
 

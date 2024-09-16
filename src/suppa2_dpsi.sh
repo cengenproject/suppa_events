@@ -18,14 +18,14 @@ WS="WS289"
 
 
 events_file="data/events/${WS}_all_strict.ioe"
-tx_tpm="data/231208_str_q_tx_TPM.tsv"
-psi_file="data/240813_psiPerEvent_.psi"
+tx_tpm="data/240913_str_q_tx_TPM_filt.tsv"
+psi_file="data/240913_psiPerEvent.psi"
 
 # note, the "prefix" should not be a separate directory!
-out_dpsi="data/240813_dpsi/"
-out_prefix="240813"
+out_dpsi="data/240913_dpsi/"
+out_prefix="240913"
 
-split_psi_dir="data/intermediates/240813_split_psi"
+split_psi_dir="data/intermediates/240913_split_psi"
 
 
 mkdir -p $out_dpsi
@@ -36,7 +36,7 @@ mkdir -p $split_psi_dir
 
 echo "Splitting PSI/TPM"
 
-module load R
+module load R/4.2.0-foss-2020b
 Rscript src/split_events.R \
     --input_path $psi_file \
     --output_path $split_psi_dir \
