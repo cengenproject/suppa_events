@@ -19,11 +19,11 @@ WS="WS289"
 
 events_file="data/events/${WS}_all_strict.ioe"
 tx_tpm="data/240913_str_q_tx_TPM_filt.tsv"
-psi_file="data/240913_psiPerEvent.psi"
+psi_file="data/240918_psiPerEvent.psi"
 
 # note, the "prefix" should not be a separate directory!
-out_dpsi="data/240913_dpsi/"
-out_prefix="240913"
+out_dpsi="data/240918_dpsi/"
+out_prefix="240918"
 
 split_psi_dir="data/intermediates/240913_split_psi"
 
