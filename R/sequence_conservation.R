@@ -2,17 +2,22 @@
 
 # with for a given granges and the bigwig, extract conservation score in region
 get_score <- function(gr, bw_cons){
-  problematic <- which(width(gr) == 1)
-  width(gr)[problematic] <- 10
   
+  problematic <- which(width(gr) == 1)
+  
+  res_problematic <- map_dbl(problematic,
+                             ~ subsetByOverlaps(bw_cons, gr[.x])$score)
+  
+  width(gr)[problematic] <- 2
   score <- genomation::ScoreMatrixBin(
     target = bw_cons,
     windows = gr,
     bin.num = 1, weight.col = "score"
   )
-  
   res <- as.numeric(score@.Data)
-  res[problematic] <- NA
+  
+  
+  res[problematic] <- res_problematic
   res
 }
 
