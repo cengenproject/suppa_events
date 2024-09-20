@@ -50,12 +50,13 @@ dpsi <- dpsi_dta |>
                        cols_remove = FALSE) |>
   filter(neurA != "Ref",
          neurB != "Ref") |>
-  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
+  mutate(detectable = !is.na(dPSI)) |>
+  mutate(is_ds = detectable & p.val < .1 & abs(dPSI) > .3)
 
 
 
 
-qs::qsave(dpsi, "intermediates/240918/240920_dpsi_neurons.qs")
+# qs::qsave(dpsi, "intermediates/240918/240920_dpsi_neurons.qs")
 
 
 
@@ -64,6 +65,7 @@ qs::qsave(dpsi, "intermediates/240918/240920_dpsi_neurons.qs")
 
 dpsi_dta_tissue <- read.table("data/240918/koterniak/240918.dpsi") |>
   rownames_to_column("event_id") |>
+  filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
   as_tibble()
 
 
@@ -81,9 +83,10 @@ dpsi_tissue <- dpsi_dta_tissue |>
                        delim = ".",
                        names = c("neurA", "neurB"),
                        cols_remove = FALSE) |>
-  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
+  mutate(detectable = !is.na(dPSI)) |>
+  mutate(is_ds = detectable & p.val < .1 & abs(dPSI) > .3)
 
-qs::qsave(dpsi_tissue, "intermediates/240918/240920_dpsi_tissue.qs")
+# qs::qsave(dpsi_tissue, "intermediates/240918/240920_dpsi_tissue.qs")
 
 
 
@@ -113,43 +116,15 @@ dpsi |>
 
 #/ ======= Load ====== / ----
 
-# Cleaned up version
-# see below ("check a few events in genome browser"): low dPSI is often meaningless and in the noise
-
-# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
-# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs") |>
-#   filter(event_type != "RI")
-
-dpsi <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi.qs") |>
-  mutate(detectable = !is.na(dPSI))
+# First perform preprocessing above to create the qs files.
+# Upon subsequent reloading, start here directly after Inits
 
 
-dpsi_tissue <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi_tissue.qs") |>
-  mutate(detectable = !is.na(dPSI))
+dpsi <- qs::qread("intermediates/240918/240920_dpsi_neurons.qs")
+dpsi_tissue <- qs::qread("intermediates/240918/240920_dpsi_tissue.qs")
 
 
 
-
-
-
-# #~ PSI ----
-# 
-# psi_lg <- read.delim("data/240301b_psiPerEvent.psi") |>
-#   rownames_to_column("event_id") |>
-#   as_tibble() |>
-#   separate_wider_regex(event_id,
-#                        patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
-#                                     event_type = "[SEA53MXRIFL]{2}", "\\:",
-#                                     event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
-#                        cols_remove = FALSE) |>
-#   pivot_longer(-c(gene_id, event_type, event_coordinates, event_id),
-#                        names_to = "sample_id",
-#                        values_to = "PSI") |>
-#   mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2]) |>
-#   filter(neuron_id %in% neurons_here) |>
-#   left_join(gene_expression_table |>
-#               rename(expressed = is_expressed),
-#             by = c("gene_id", "neuron_id"))
 
 
 
@@ -162,7 +137,9 @@ dpsi$p.val |> hist(breaks = 70)
 dpsi_tissue$p.val |> hist(breaks = 70)
 
 table(dpsi$p.val < .05)
+table(dpsi$p.val < .1)
 table(dpsi_tissue$p.val < .05)
+table(dpsi_tissue$p.val < .1)
 
 dpsi |>
   filter(detectable) |>
@@ -178,8 +155,7 @@ dpsi |>
   theme(legend.position = "none") +
   scale_color_manual(values = c("grey30", "darkred"))
 
-# ggsave("event_type_volcanoes.png", path = export_dir,
-#        width = 30, height = 12, units = "cm")
+
 
 
 # Event types overview ----
@@ -212,7 +188,9 @@ dpsi_tissue |>
 
 
 
-# type vs DS
+#~ type vs DS ----
+
+# minimal version
 dpsi |>
   summarize(has_ds = any(is_ds),
             .by = c(event_id, event_type)) |>
@@ -224,13 +202,10 @@ dpsi |>
   xlab(NULL) + ylab("Number of events") +
   theme(legend.position = "none")
 
-# ggsave("ds_per_type.pdf", path = export_dir,
-#        width = 21, height = 8, units = "cm")
 
 
 
-# type vs DS vs detectable
-
+# type vs DS vs detectable (code for fig in preprint)
 
 dpsi |>
   summarize(gene_expressed = any(detectable),
@@ -265,12 +240,70 @@ dpsi |>
   geom_bar(aes(x = event_type, fill = category),
            color = 'black')
 
+
+
+# type vs DS vs detectable with tissue-regulated cases
+
+
+events_categorized <- full_join(
+  dpsi |>
+    summarize(measurable_neur = any(detectable),
+              has_ds_neur = any(is_ds),
+              .by = c(event_id, event_type)),
+  dpsi_tissue |>
+    summarize(measurable_tissue = any(detectable),
+              has_ds_tissue = any(is_ds),
+              .by = c(event_id, event_type)),
+  by = c("event_id", "event_type")
+) |>
+  mutate(
+    category = case_when(
+      !measurable_neur & !measurable_tissue ~ "not measured",
+      !has_ds_neur & !has_ds_tissue ~ "no DAS",
+      !has_ds_neur &  has_ds_tissue ~ "tissue-regulated",
+      has_ds_neur ~ "neuron-regulated",
+      .default = "other",
+    ) |> ordered(levels = c("not measured", "no DAS",
+                            "tissue-regulated", "neuron-regulated")),
+    event_type = case_match(
+      event_type,
+      "A3" ~ "Alt. 3' ss",
+      "A5" ~ "Alt. 5' ss",
+      "AF" ~ "Alt. first exon",
+      "AL" ~ "Alt. last exon",
+      "MX" ~ "Multiple exons",
+      "RI" ~ "Intron retention",
+      "SE" ~ "Cassette exon"
+    ))
+
+
+events_categorized |>
+  select(event_type, category) |>
+  ggplot() +
+  theme_classic() +
+  scale_fill_manual(values = c("grey90", "grey30", 'darkblue', "darkred")) +
+  xlab(NULL) + ylab("Number of events") +
+  theme(legend.position = "top",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_comma()) +
+  geom_bar(aes(x = event_type, fill = category),
+           color = 'black')
+
+
+# Save plot and corresponding Source Data
+
 # ggsave("ds_per_type.pdf", path = export_dir,
 #        width = 16, height = 9, units = "cm")
+# 
+# events_categorized |>
+#   writexl::write_xlsx(file.path(export_dir, "ds_per_type_sourceData.xlsx"))
 
 
 
-#~ compare neurons and tissues DAS ----
+
+#~ Manual exploration compare neurons and tissue sero vs pan DAS ----
 
 # serotonergic: keep only comparisons of a sero neuron and a non-sero, check if DAS
 neuron_ds_sero_vs_all <- dpsi |>
@@ -348,79 +381,12 @@ psi_lg_tissue |>
 
 
 
-# dopaminergic: keep only comparisons of a dopa neuron and a non-dopa, check if DAS
-neuron_ds_dopa_vs_all <- dpsi |>
-  mutate(dopa = neurA %in% c("CEP") + neurB %in% c("CEP")) |>
-  filter(dopa == 1) |>
-  summarize(neuron_ds_dopa = any(is_ds),
-            .by = c(event_id, event_type))
+# >> Sequence features << ----
 
-tissue_ds_dopa_vs_all <- dpsi_tissue |>
-  mutate(dopa = (neurA =="dopaminergic" & neurB == "neurons") |
-           (neurA =="neurons" & neurB == "dopaminergic")) |>
-  filter(dopa == 1) |>
-  summarize(tissue_ds_dopa = any(is_ds),
-            .by = c(event_id, event_type))
-
-event_id_both <- union(neuron_ds_dopa_vs_all$event_id,
-                       tissue_ds_dopa_vs_all$event_id)
-
-table(neuron = (neuron_ds_dopa_vs_all$neuron_ds_dopa |>
-                  setNames(neuron_ds_dopa_vs_all$event_id))[event_id_both],
-      tissue = (tissue_ds_dopa_vs_all$tissue_ds_dopa |>
-                  setNames(tissue_ds_dopa_vs_all$event_id))[event_id_both])
+# below this point, only compare whether difference between DAS and non-DAS
 
 
-
-
-
-
-
-# Check a few examples in browser
-
-dpsi |>
-  filter(p.val < .1 & detectable &
-           dPSI > .3) |>
-  slice_sample(n = 1) |>
-  as.data.frame()
-
-dpsi |>
-  filter(p.val < .05 & detectable) |>
-  pull(dPSI) |>
-  (\(x) table(x > .3))()
-
-
-
-dpsi |>
-  filter(is_ds) |> pull(dPSI) |> abs() |> hist()
-
-
-ev_diff <- dpsi2 |>
-  filter(detectable, !is.na(dPSI), event_type == "SE") |>
-  anti_join({dpsi |>
-      filter(detectable, !is.na(dPSI))})
-
-i <- sample(nrow(ev_diff), 1)
-
-dpsi |>
-  filter(event_id == ev_diff$event_id[[i]],
-         neuron_pair == ev_diff$neuron_pair[[i]]) |>
-  as.data.frame()
-
-dpsi2 |>
-  filter(event_id == ev_diff$event_id[[i]],
-         neuron_pair == ev_diff$neuron_pair[[i]]) |>
-  as.data.frame()
-
-dpsi |>
-  filter(event_id == ev_diff[[1]])
-
-
-
-
-
-
-# Extract coordinates of event ----
+#~ Extract coordinates of event ----
 source("R/extract_event_coordinates.R")
 
 coords_all <- dpsi |>
@@ -431,18 +397,13 @@ coords_all <- dpsi |>
                        ~ extract_coords(.x, .y[["event_coordinates"]]))) |>
   mutate(coords = map2(data, coords, ~bind_cols(.x["event_id"],
                                                 .y)))
-# qs::qsave(coords_all, "intermediates/240814_dpsi/240814_all_coords.qs")
-
-
-# all.equal(coords_all, qs::qread("intermediates/240814_dpsi/240814_all_coords.qs"))
 
 
 
-# GC content ----
 
+#~ GC content ----
 
 source("R/sequence_properties.R")
-
 
 seq_gc <- map2(coords_all$event_type |> set_names(),
                coords_all$coords,
@@ -464,25 +425,9 @@ seq_gc <- map2(coords_all$event_type |> set_names(),
 
 
 
+#~ Conservation ----
 
 
-
-
-# Conservation ----
-
-# Import after running "sequence_conservation.R"
-
-
-
-cons_all <- {
-  cons_all_nested <- qs::qread("intermediates/240814_dpsi/240814_all_cons.qs")
-  
-  pluck(cons_all_nested, "conservation_score") |>
-    set_names(cons_all_nested$event_type)
-}
-
-
-# here
 source("R/sequence_conservation.R")
 bw_phastcons <- rtracklayer::import("data/UCSC_fastcons/ce11.phastCons26way.bw")
 
@@ -490,474 +435,154 @@ seqlevels(bw_phastcons) <- c("I", "II","III","IV", "M", "V","X")
 
 
 
-cons_all <- coords_all |>
+cons_all_nested <- coords_all |>
   mutate(conservation_score = map2(event_type, coords,
-                                   ~ get_cons(.x, .y, bw_phastcons) )) |>
+                                   ~ get_cons(.x, .y, bw_phastcons) ))
+cons_all <- cons_all_nested |>
   pluck("conservation_score") |>
-  set_names(cons_all$event_type)
+  set_names(cons_all_nested$event_type)
 
 
 
+#~ Assemble data ----
 
+# Assemble the data from these different sequence features
+# Note the event types have different column names; first transform the sequence features
+# into long dataframes (nested), then join by event id and feature
 
-
-#>> prep plot ----
-
-#~  A3 ----
-d_a3 <- dpsi |>
-  filter(event_type == "A3") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "A3")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(intron_length, overhang_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z]+)_length$",
-               values_to = "length") |>
-  left_join(cons_all[["A3"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |> 
-  left_join(seq_gc[["A3"]] |> rename(feature = measurement),
-            by = c("event_id", "feature")
-  )
-
-#~ A5 ----
-
-d_a5 <- dpsi |>
-  filter(event_type == "A5") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "A5")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(intron_length, overhang_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z]+)_length$",
-               values_to = "length") |>
-  left_join(cons_all[["A5"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
+coords_long <- coords_all |>
+  select(-data) |>
+  mutate(
+    coords = map(coords,
+                 \(coords_one_type){
+                   coords_one_type |>
+                     select(event_id, ends_with("_length")) |>
+                     pivot_longer(cols = ends_with("_length"),
+                                  names_pattern = "^([_a-z]+)_length$",
+                                  names_to = "feature",
+                                  values_to = "length")
+                 })
   ) |>
-  left_join(seq_gc[["A5"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
+  unnest(coords)
+
+cons_long <- tibble(
+  event_type = names(cons_all),
+  values = map(cons_all, 
+             \(cons_one_type){
+               cons_one_type |>
+                 pivot_longer(cols = ends_with("_conservation"),
+                              names_pattern = "^([a-z_]+)_conservation$",
+                              names_to = "feature",
+                              values_to = "conservation")
+             } )
+) |>
+  unnest(values)
+
+gc_long <- tibble(
+  event_type = names(seq_gc),
+  values = map(seq_gc,
+                   \(gc_one_type){
+                     gc_one_type |>
+                       rename(feature = measurement) |>
+                       select(event_id, feature, percent_GC)
+                   })
+) |>
+  unnest(values)
+
+features_long <- coords_long |>
+  left_join(cons_long,
+            by = c("event_type", "event_id", "feature")) |>
+  left_join(gc_long,
+            by = c("event_type", "event_id", "feature"))
 
 
-#~ AF ----
-
-
-
-d_af <- dpsi |>
-  filter(event_type == "AF") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "AF")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(event_type, event_id,
-                    distal_exon_length, distal_intron_length,
-                    proximal_exon_length, proximal_intron_length)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z_]+)_length$",
-               values_to = "length") |>
-  left_join(cons_all[["AF"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |> 
-  left_join(seq_gc[["AF"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
-
-
-
-#~ AL ----
-
-
-d_al <- dpsi |>
-  filter(event_type == "AL") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "AL")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(distal_exon_length, distal_intron_length,
-                    proximal_exon_length, proximal_intron_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z_]+)_length$",
-               values_to = "length")  |>
-  left_join(cons_all[["AL"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |> 
-  left_join(seq_gc[["AL"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
-
-#~ MX ----
-
-
-d_mx <- dpsi |>
-  filter(event_type == "MX") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "MX")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(first_exon_length, first_up_intron_length,
-                    first_dn_intron_length, second_exon_length,
-                    second_up_intron_length, second_dn_intron_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z_]+)_length$",
-               values_to = "length") |>
-  mutate(feature = recode(feature,
-                          first_up_intron = "first_upstream_intron",
-                          first_dn_intron = "first_downstream_intron",
-                          second_up_intron = "second_upstream_intron",
-                          second_dn_intron = "second_downstream_intron")) |>
-  left_join(cons_all[["MX"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |>
-  left_join(seq_gc[["MX"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
-
-
-
-#~ RI ----
-
-
-d_ri <- dpsi |>
-  filter(event_type == "RI") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "RI")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(intron_length, upstream_exon_length,
-                    downstream_exon_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z_]+)_length$",
-               values_to = "length") |>
-  left_join(cons_all[["RI"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |> 
-  left_join(seq_gc[["RI"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
-
-
-#~ SE ----
-
-
-d_se <- dpsi |>
-  filter(event_type == "SE") |>
-  left_join(coords_all$coords[[which(coords_all$event_type == "SE")]],
-            by = "event_id") |>
-  summarize(has_ds = any(is_ds),
-            is_detectable = any(detectable),
-            .by = c(upstream_intron_length, downstream_intron_length,
-                    exon_length,
-                    event_type, event_id)) |>
-  pivot_longer(-c(event_id, event_type, has_ds, is_detectable),
-               names_to = "feature",
-               names_pattern = "^([a-z_]+)_length$",
-               values_to = "length") |>
-  left_join(cons_all[["SE"]] |>
-              pivot_longer(-event_id,
-                           names_pattern = "^([a-z_]+)_conservation$",
-                           names_to = "feature",
-                           values_to = "conservation"),
-            by = c("event_id", "feature")
-  ) |> 
-  left_join(seq_gc[["SE"]] |> rename(feature = measurement),
-            by = c("event_id", "feature"))
-
-
-
-# qs::qsave(list(d_a3, d_a5, d_af, d_al, d_mx, d_ri, d_se),
-#           "intermediates/240307_events_full.qs")
+local({
+  # ensure perfect match ie left or right join identical
+  stopifnot(all.equal(
+    features_long,
+    coords_long |>
+      right_join(cons_long,
+                 by = c("event_type", "event_id", "feature")) |>
+      right_join(gc_long,
+                 by = c("event_type", "event_id", "feature"))
+  ))
+})
 
 
 
 
-# >>> Plots ----
+# add back DAS information
 
-#~~  A3 ----
-gg_l_a3 <- d_a3 |>
+
+local({
+  # ensure match of event names
+  stopifnot(all.equal(
+    features_long |>
+      left_join(dpsi |>
+                  summarize(has_ds = any(is_ds),
+                            is_detectable = any(detectable),
+                            .by = c(event_type, event_id)),
+                by = c("event_type", "event_id")
+      ),
+    features_long |>
+      full_join(dpsi |>
+                  summarize(has_ds = any(is_ds),
+                            is_detectable = any(detectable),
+                            .by = c(event_type, event_id)),
+                by = c("event_type", "event_id")
+      )
+  ))
+})
+
+features_long <- features_long |>
+  full_join(dpsi |>
+              summarize(has_ds = any(is_ds),
+                        is_detectable = any(detectable),
+                        .by = c(event_type, event_id)),
+            by = c("event_type", "event_id")
+            )
+
+
+
+
+# qs::qsave(features_long,
+#           "intermediates/240918/240920_features.qs")
+
+
+
+
+#~ Plots ----
+
+
+features_long |>
   filter(is_detectable) |>
   ggplot() +
   theme_classic() +
   ggbeeswarm::geom_quasirandom(aes(x = has_ds, y = length, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
+  facet_wrap(~interaction(event_type, feature), scales = "free_y") +
   # scale_y_log10() +
   xlab(NULL) + ylab("Length (bp)") +
   theme(legend.position = "none") +
   scale_color_manual(values = c("grey30", "darkred"))
 
 
-gg_gc_a3 <- d_a3 |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x = has_ds, y = percent_GC, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-gg_cs_a3 <- d_a3 |>
+features_long |>
   filter(is_detectable) |>
   ggplot() +
   theme_classic() +
   ggbeeswarm::geom_quasirandom(aes(x = has_ds, y = conservation, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
+  facet_wrap(~interaction(event_type, feature), scales = "free_y") +
   # scale_y_log10() +
   xlab(NULL) + ylab("Conservation score") +
   theme(legend.position = "none") +
   scale_color_manual(values = c("grey30", "darkred"))
 
-
-
-
-#~~ A5 ----
-
-gg_l_a5 <- d_a5 |>
+features_long |>
   filter(is_detectable) |>
   ggplot() +
   theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-gg_gc_a5 <- d_a5 |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-gg_cs_a5 <- d_a5 |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-
-#~~ AF ----
-gg_l_af <- d_af |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-gg_gc_af <- d_af |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-gg_cs_af <- d_af |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-#~~ AL ----
-
-gg_l_al <- d_al |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-gg_gc_al <- d_al |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-gg_cs_al <- d_al |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-#~~ MX ----
-
-gg_l_mx <- d_mx |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-gg_gc_mx <- d_mx |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-gg_cs_mx <- d_mx |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_grid(cols = vars(feature), scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-#~~ RI ----
-
-gg_l_ri <- d_ri |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-gg_gc_ri <- d_ri |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Percent GC") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-gg_cs_ri <- d_ri |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-
-#~~ SE ----
-
-gg_l_se <- d_se |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = length, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Length (bp)") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-gg_gc_se <- d_se |>
-  filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = percent_GC, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
+  ggbeeswarm::geom_quasirandom(aes(x = has_ds, y = percent_GC, color = has_ds)) +
+  facet_wrap(~interaction(event_type, feature), scales = "free_y") +
   # scale_y_log10() +
   xlab(NULL) + ylab("Percent GC") +
   theme(legend.position = "none") +
@@ -966,172 +591,46 @@ gg_gc_se <- d_se |>
 
 
 
-gg_cs_se <- d_se |>
+
+
+
+
+
+
+# Stats ----
+tests <- features_long |>
   filter(is_detectable) |>
-  ggplot() +
-  theme_classic() +
-  ggbeeswarm::geom_quasirandom(aes(x= has_ds, y = conservation, color = has_ds)) +
-  facet_wrap(~feature, scales = "free_y") +
-  # scale_y_log10() +
-  xlab(NULL) + ylab("Conservation score") +
-  theme(legend.position = "none") +
-  scale_color_manual(values = c("grey30", "darkred"))
-
-
-
-
-
-#~ save ----
-
-
-gr_a3 <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_a3)),
-  egg::gtable_frame(ggplotGrob(gg_gc_a3)),
-  egg::gtable_frame(ggplotGrob(gg_cs_a3))
-)
-gr_a5 <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_a5)),
-  egg::gtable_frame(ggplotGrob(gg_gc_a5)),
-  egg::gtable_frame(ggplotGrob(gg_cs_a5))
-)
-gr_af <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_af)),
-  egg::gtable_frame(ggplotGrob(gg_gc_af)),
-  egg::gtable_frame(ggplotGrob(gg_cs_af))
-)
-gr_al <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_al)),
-  egg::gtable_frame(ggplotGrob(gg_gc_al)),
-  egg::gtable_frame(ggplotGrob(gg_cs_al))
-)
-gr_mx <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_mx)),
-  egg::gtable_frame(ggplotGrob(gg_gc_mx)),
-  egg::gtable_frame(ggplotGrob(gg_cs_mx))
-)
-gr_ri <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_ri)),
-  egg::gtable_frame(ggplotGrob(gg_gc_ri)),
-  egg::gtable_frame(ggplotGrob(gg_cs_ri))
-)
-gr_se <- gridExtra::gtable_rbind(
-  egg::gtable_frame(ggplotGrob(gg_l_se)),
-  egg::gtable_frame(ggplotGrob(gg_gc_se)),
-  egg::gtable_frame(ggplotGrob(gg_cs_se))
-)
-
-gr_row_up <- gridExtra::gtable_cbind(gr_a3, gr_a5, gr_af, gr_al)
-gr_row_dn <- gridExtra::gtable_cbind(gr_mx, gr_ri, gr_se)
-
-
-
-gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
-
-# ggsave("upper_row.png", plot = gr_row_up, path = export_dir,
-#        width = 35, height = 14, units = "cm")
-# 
-# ggsave("lower_row.png", plot = gr_row_dn, path = export_dir,
-#        width = 35, height = 14, units = "cm")
-
-
-# ggsave("all_together.png", plot = gr, path = export_dir,
-#        width = 40, height = 60, units = "cm")
-
-
-
-
-#~~~ Individual plots
-
-# ggsave("lengths_a3.pdf", plot = gg_l_a3, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# 
-# ggsave("percGC_a3.pdf", plot = gg_gc_a3, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# 
-# ggsave("cons_a3.pdf", plot = gg_cs_a3, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# 
-# 
-# 
-# ggsave("lengths_a5.pdf", plot = gg_l_a5, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# 
-# ggsave("percGC_a5.pdf", plot = gg_gc_a5, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# ggsave("cons_a5.pdf", plot = gg_cs_a5, path = export_dir,
-#        width = 9, height = 6, units = "cm")
-# 
-# 
-# ggsave("lengths_af.pdf", plot = gg_l_af, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# 
-# ggsave("percGC_af.pdf", plot = gg_gc_af, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# ggsave("cons_af.pdf", plot = gg_cs_af, path = export_dir,
-#       width = 18, height = 6, units = "cm")
-# 
-# 
-# 
-# 
-# ggsave("lengths_al.pdf", plot = gg_l_al, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# 
-# ggsave("percGC_al.pdf", plot = gg_gc_al, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# ggsave("cons_al.pdf", plot = gg_cs_al, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# 
-# 
-# 
-# ggsave("lengths_mx.pdf", plot = gg_l_mx, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# 
-# ggsave("percGC_mx.pdf", plot = gg_gc_mx, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# ggsave("cons_mx.pdf", plot = gg_cs_mx, path = export_dir,
-#        width = 18, height = 6, units = "cm")
-# 
-# 
-# 
-# ggsave("lengths_ri.pdf", plot = gg_l_ri, path = export_dir,
-#        width = 12, height = 6, units = "cm")
-# 
-# ggsave("percGC_ri.pdf", plot = gg_gc_ri, path = export_dir,
-#        width = 12, height = 6, units = "cm")
-# ggsave("cons_ri.pdf", plot = gg_cs_ri, path = export_dir,
-#        width = 12, height = 6, units = "cm")
-# 
-# 
-# 
-# 
-# ggsave("lengths_se.pdf", plot = gg_l_se, path = export_dir,
-#        width = 12, height = 6, units = "cm")
-# 
-# ggsave("percGC_se.pdf", plot = gg_gc_se, path = export_dir,
-#        width = 12, height = 6, units = "cm")
-# ggsave("cons_se.pdf", plot = gg_cs_se, path = export_dir,
-#               width = 12, height = 6, units = "cm")
-
-
-# Stat tests ----
-
-tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
-                 ~ {.x |>
-                     filter(is_detectable) |>
-                     group_by(event_type, feature) |>
-                     summarize(pval_length = wilcox.test(length[has_ds],
-                                                         length[! has_ds])$p.value,
-                               pval_gc = wilcox.test(percent_GC[has_ds],
-                                                     percent_GC[! has_ds])$p.value,
-                               pval_conservation = wilcox.test(conservation[has_ds],
-                                                               conservation[! has_ds])$p.value,
-                               .groups = 'drop') |>
-                     pivot_longer(starts_with("pval_"),
-                                  names_prefix = "pval_",
-                                  names_to = "metric",
-                                  values_to = "p_val")
-                 }) |>
+  group_by(event_type, feature) |>
+  summarize(pval_length = wilcox.test(length[has_ds],
+                                      length[! has_ds])$p.value,
+            pval_gc = wilcox.test(percent_GC[has_ds],
+                                  percent_GC[! has_ds])$p.value,
+            pval_conservation = wilcox.test(conservation[has_ds],
+                                            conservation[! has_ds])$p.value,
+            .groups = 'drop') |>
+  pivot_longer(starts_with("pval_"),
+               names_prefix = "pval_",
+               names_to = "metric",
+               values_to = "p_val") |>
   mutate(padj = p.adjust(p_val, method = 'fdr'))
+
+
+
+medians <- features_long |>
+  filter(is_detectable) |>
+  group_by(event_type, feature) |>
+  summarize(median_length_ds = median(length[has_ds]),
+             median_length_nonds = median(length[! has_ds]),
+             median_gc_ds = median(percent_GC[has_ds]),
+             median_gc_nonds = median(percent_GC[! has_ds]),
+             median_conservation_ds = median(conservation[has_ds]),
+             median_conservation_nonds = median(conservation[! has_ds]),
+             .groups = 'drop') |>
+  pivot_longer(starts_with("median_"),
+               names_pattern = "^(median_)([a-z]+)_(nonds|ds)$",
+               names_to = c(".value", "metric", ".value"))
+
+
 
 
 
@@ -1147,23 +646,6 @@ tests |>
                    labels = rev(c("#", "*", "**", "***"))))
 
 
-medians <- map_dfr(
-  list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
-  
-  ~ .x |>
-    filter(is_detectable) |>
-    group_by(event_type, feature) |>
-    summarize(median_length_ds = median(length[has_ds]),
-              median_length_nonds = median(length[! has_ds]),
-              median_gc_ds = median(percent_GC[has_ds]),
-              median_gc_nonds = median(percent_GC[! has_ds]),
-              median_conservation_ds = median(conservation[has_ds]),
-              median_conservation_nonds = median(conservation[! has_ds]),
-              .groups = 'drop') |>
-    pivot_longer(starts_with("median_"),
-                 names_pattern = "^(median_)([a-z]+)_(nonds|ds)$",
-                 names_to = c(".value", "metric", ".value"))
-)
 
 
 tests |>
