@@ -6,7 +6,12 @@ get_score <- function(gr, bw_cons){
   problematic <- which(width(gr) == 1)
   
   res_problematic <- map_dbl(problematic,
-                             ~ subsetByOverlaps(bw_cons, gr[.x])$score)
+                             ~ {
+                               local_score <- subsetByOverlaps(bw_cons, gr[.x])$score
+                               if(length(local_score) > 1) exit("problematic with length longer than 1")
+                               if(length(local_score) == 0L) return(0)
+                               local_score
+                             })
   
   width(gr)[problematic] <- 2
   score <- genomation::ScoreMatrixBin(
