@@ -358,14 +358,14 @@ extract_coords_mx <- function(event_coordinates){
       first_exon_length = first_exon_end - first_exon_start + 1,
       
       # upstream intron
-      first_up_intron_start = c1 + 1,
-      first_up_intron_end = c2 - 1,
-      first_up_intron_length = first_up_intron_end - first_up_intron_start + 1,
+      first_upstream_intron_start = c1 + 1,
+      first_upstream_intron_end = c2 - 1,
+      first_upstream_intron_length = first_upstream_intron_end - first_upstream_intron_start + 1,
       
       # downstream intron
-      first_dn_intron_start = c3 + 1,
-      first_dn_intron_end = c4 - 1,
-      first_dn_intron_length = first_dn_intron_end - first_dn_intron_start + 1,
+      first_downstream_intron_start = c3 + 1,
+      first_downstream_intron_end = c4 - 1,
+      first_downstream_intron_length = first_downstream_intron_end - first_downstream_intron_start + 1,
       
       # Second exon
       #exon
@@ -374,14 +374,14 @@ extract_coords_mx <- function(event_coordinates){
       second_exon_length = second_exon_end - second_exon_start + 1,
       
       # second upstream intron
-      second_up_intron_start = c1 + 1,
-      second_up_intron_end = c6 - 1,
-      second_up_intron_length = second_up_intron_end - second_up_intron_start + 1,
+      second_upstream_intron_start = c1 + 1,
+      second_upstream_intron_end = c6 - 1,
+      second_upstream_intron_length = second_upstream_intron_end - second_upstream_intron_start + 1,
       
       # second downstream intron
-      second_dn_intron_start = c7 + 1,
-      second_dn_intron_end = c4 - 1,
-      second_dn_intron_length = second_dn_intron_end - second_dn_intron_start + 1
+      second_downstream_intron_start = c7 + 1,
+      second_downstream_intron_end = c4 - 1,
+      second_downstream_intron_length = second_downstream_intron_end - second_downstream_intron_start + 1
     )
 }
 
