@@ -3,10 +3,16 @@
 
 # Inits ----
 
+library(Biostrings)
+library(GenomicFeatures)
+library(genomation)
+
 library(tidyverse)
-
-
 library(wbData)
+
+
+gseq <- readDNAStringSet(wb_get_genome_path(289))
+
 
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
@@ -529,18 +535,23 @@ coords_all <- dpsi |>
 # qs::qsave(coords_all, "intermediates/240814_dpsi/240814_all_coords.qs")
 
 
-
-
-# Check that equivalent to previous
+# all.equal(coords_all, qs::qread("intermediates/240814_dpsi/240814_all_coords.qs"))
 
 
 
 # GC content ----
 
-# Import after running "sequence_properties.R"
+
+source("R/sequence_properties.R")
 
 
-seq_gc <- qs::qread("intermediates/240814_dpsi/240814_seq_properties.qs") |>
+seq_gc <- map2(coords_all$event_type |> set_names(),
+               coords_all$coords,
+               \(ev_type, coords){
+                 get_seq_properties(ev_type,
+                                    coords |> select(-matches("^c[1-9]$")))
+                 
+               }) |>
   imap(~ {
     .x |>
       add_column(type = .y) |>
@@ -549,12 +560,19 @@ seq_gc <- qs::qread("intermediates/240814_dpsi/240814_seq_properties.qs") |>
                    names_to = c("measurement", ".value")) |>
       mutate(percent_GC = 100 * gc/width)
   })
+  
+
+
+
+
+
 
 
 
 # Conservation ----
 
 # Import after running "sequence_conservation.R"
+
 
 
 cons_all <- {
@@ -565,13 +583,20 @@ cons_all <- {
 }
 
 
-# source("R/sequence_conservation.R")
-# 
-# cons_all <- coords_all |>
-#   mutate(conservation_score = map2(event_type, coords,
-#                                    ~ get_cons(.x, .y) ))
-# 
-# # qs::qsave(cons_all, "intermediates/240814_dpsi/240814_all_cons.qs")
+# here
+source("R/sequence_conservation.R")
+bw_phastcons <- rtracklayer::import("data/UCSC_fastcons/ce11.phastCons26way.bw")
+
+seqlevels(bw_phastcons) <- c("I", "II","III","IV", "M", "V","X")
+
+
+
+cons_all <- coords_all |>
+  mutate(conservation_score = map2(event_type, coords,
+                                   ~ get_cons(.x, .y, bw_phastcons) )) |>
+  pluck("conservation_score") |>
+  set_names(cons_all$event_type)
+
 
 
 

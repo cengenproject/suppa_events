@@ -1,15 +1,6 @@
 
 # Inits ----
 
-library(wbData)
-library(Biostrings)
-library(GenomicFeatures)
-
-
-gseq <- readDNAStringSet(wb_get_genome_path(289))
-
-d_all <- qs::qread("intermediates/240814_dpsi/240814_all_coords.qs")
-
 
 # functions ----
 
@@ -358,24 +349,6 @@ get_seq_properties <- function(event_type, d){
     )
   
 }
-
-
-
-
-# Main ----
-
-all_seq_properties <- list()
-
-for(ev_type in c("A5","A3","AF","AL","MX","RI","SE")){
-  d_ev_type <- d_all[d_all$event_type == ev_type, "coords"][[1]][[1]] |>
-    dplyr::select(-matches("^c[1-9]$"))
-  
-  all_seq_properties[[ev_type]] <- get_seq_properties(ev_type, d_ev_type)
-}
-
-qs::qsave(all_seq_properties, "intermediates/240814_dpsi/240814_seq_properties.qs")
-
-
 
 
 

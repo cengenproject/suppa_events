@@ -1,19 +1,15 @@
 
-library(GenomicFeatures)
-library(genomation)
 
-bw <- rtracklayer::import("data/UCSC_fastcons/ce11.phastCons26way.bw")
-
-seqlevels(bw) <- c("I", "II","III","IV", "M", "V","X")
-
-
-get_score <- function(gr){
+# with for a given granges and the bigwig, extract conservation score in region
+get_score <- function(gr, bw_cons){
   problematic <- which(width(gr) == 1)
   width(gr)[problematic] <- 10
   
-  score <- ScoreMatrixBin(target = bw,
-                          windows = gr,
-                          bin.num = 1, weight.col = "score")
+  score <- genomation::ScoreMatrixBin(
+    target = bw_cons,
+    windows = gr,
+    bin.num = 1, weight.col = "score"
+  )
   
   res <- as.numeric(score@.Data)
   res[problematic] <- NA
@@ -25,7 +21,7 @@ get_score <- function(gr){
 
 
 
-get_cons_a3 <- function(d_a3){
+get_cons_a3 <- function(d_a3, bw_cons){
   a3_intron_gr <- GRanges(seqnames = d_a3$chr,
                           ranges = IRanges(start = d_a3$intron_start,
                                            end = d_a3$intron_end),
@@ -39,9 +35,9 @@ get_cons_a3 <- function(d_a3){
   
   
   
-  a3_intron_score <- get_score(a3_intron_gr)
+  a3_intron_score <- get_score(a3_intron_gr, bw_cons)
   
-  a3_overhang_score <- get_score(a3_overhang_gr)
+  a3_overhang_score <- get_score(a3_overhang_gr, bw_cons)
   
   
   
@@ -57,7 +53,7 @@ get_cons_a3 <- function(d_a3){
 
 
 # A5 ----
-get_cons_a5 <- function(d_a5){
+get_cons_a5 <- function(d_a5, bw_cons){
   a5_intron_gr <- GRanges(seqnames = d_a5$chr,
                           ranges = IRanges(start = d_a5$intron_start,
                                            end = d_a5$intron_end),
@@ -71,9 +67,9 @@ get_cons_a5 <- function(d_a5){
   
   
   
-  a5_intron_score <- get_score(a5_intron_gr)
+  a5_intron_score <- get_score(a5_intron_gr, bw_cons)
   
-  a5_overhang_score <- get_score(a5_overhang_gr)
+  a5_overhang_score <- get_score(a5_overhang_gr, bw_cons)
   
   
   
@@ -89,7 +85,7 @@ get_cons_a5 <- function(d_a5){
 
 # AF ----
 
-get_cons_af <- function(d_af){
+get_cons_af <- function(d_af, bw_cons){
   af_prox_exon_gr <- GRanges(seqnames = d_af$chr,
                              ranges = IRanges(start = d_af$proximal_exon_start,
                                               end = d_af$proximal_exon_end),
@@ -114,13 +110,13 @@ get_cons_af <- function(d_af){
   
   
   
-  af_prox_exon_score <- get_score(af_prox_exon_gr)
+  af_prox_exon_score <- get_score(af_prox_exon_gr, bw_cons)
   
-  af_prox_intron_score <- get_score(af_prox_intron_gr)
+  af_prox_intron_score <- get_score(af_prox_intron_gr, bw_cons)
   
-  af_dist_exon_score <- get_score(af_dist_exon_gr)
+  af_dist_exon_score <- get_score(af_dist_exon_gr, bw_cons)
   
-  af_dist_intron_score <- get_score(af_dist_intron_gr)
+  af_dist_intron_score <- get_score(af_dist_intron_gr, bw_cons)
   
   
   
@@ -139,7 +135,7 @@ get_cons_af <- function(d_af){
 
 # AL ----
 
-get_cons_al <- function(d_al){
+get_cons_al <- function(d_al, bw_cons){
   al_prox_ex_gr <- GRanges(seqnames = d_al$chr,
                            ranges = IRanges(start = d_al$proximal_exon_start,
                                             end = d_al$proximal_exon_end),
@@ -162,10 +158,10 @@ get_cons_al <- function(d_al){
   
   
   
-  al_p_ex_seq <- get_score(al_prox_ex_gr)
-  al_p_i_seq <- get_score(al_prox_in_gr)
-  al_d_e_seq <- get_score(al_dist_ex_gr)
-  al_d_i_seq <- get_score(al_dist_in_gr)
+  al_p_ex_seq <- get_score(al_prox_ex_gr, bw_cons)
+  al_p_i_seq <- get_score(al_prox_in_gr, bw_cons)
+  al_d_e_seq <- get_score(al_dist_ex_gr, bw_cons)
+  al_d_i_seq <- get_score(al_dist_in_gr, bw_cons)
   
   
   
@@ -186,7 +182,7 @@ get_cons_al <- function(d_al){
 
 # MX ----
 
-get_cons_mx <- function(d_mx){
+get_cons_mx <- function(d_mx, bw_cons){
   mx_f_e <- GRanges(seqnames = d_mx$chr,
                     ranges = IRanges(start = d_mx$first_exon_start,
                                      end = d_mx$first_exon_end),
@@ -214,12 +210,12 @@ get_cons_mx <- function(d_mx){
                                       end = d_mx$second_dn_intron_end),
                      strand = d_mx$strand)
   
-  mx_f_e_s <- get_score(mx_f_e)
-  mx_f_ui_s <- get_score(mx_f_ui)
-  mx_f_di_s <- get_score(mx_f_di)
-  mx_s_e_s <- get_score(mx_s_e)
-  mx_s_ui_s <- get_score(mx_s_ui)
-  mx_s_di_s <- get_score(mx_s_di)
+  mx_f_e_s <- get_score(mx_f_e, bw_cons)
+  mx_f_ui_s <- get_score(mx_f_ui, bw_cons)
+  mx_f_di_s <- get_score(mx_f_di, bw_cons)
+  mx_s_e_s <- get_score(mx_s_e, bw_cons)
+  mx_s_ui_s <- get_score(mx_s_ui, bw_cons)
+  mx_s_di_s <- get_score(mx_s_di, bw_cons)
   
   
   
@@ -240,7 +236,7 @@ get_cons_mx <- function(d_mx){
 # RI ----
 
 
-get_cons_ri <- function(d_ri){
+get_cons_ri <- function(d_ri, bw_cons){
   ri_ue_gr <- GRanges(seqnames = d_ri$chr,
                       ranges = IRanges(start = d_ri$upstream_exon_start,
                                        end = d_ri$upstream_exon_end),
@@ -257,9 +253,9 @@ get_cons_ri <- function(d_ri){
                           strand = d_ri$strand)
   
   
-  ri_de_s <- get_score(ri_ue_gr)
-  ri_ue_s <- get_score(ri_de_gr)
-  ri_i_s <- get_score(ri_intron_gr)
+  ri_de_s <- get_score(ri_ue_gr, bw_cons)
+  ri_ue_s <- get_score(ri_de_gr, bw_cons)
+  ri_i_s <- get_score(ri_intron_gr, bw_cons)
   
   
   
@@ -277,7 +273,7 @@ get_cons_ri <- function(d_ri){
 
 # SE ----
 
-get_cons_se <- function(d_se){
+get_cons_se <- function(d_se, bw_cons){
 se_ui <- GRanges(seqnames = d_se$chr,
                  ranges = IRanges(start = d_se$upstream_intron_start,
                                   end = d_se$upstream_intron_end),
@@ -294,9 +290,9 @@ se_e <- GRanges(seqnames = d_se$chr,
                 strand = d_se$strand)
 
 
-se_ui_seq <- get_score(se_ui)
-se_di_seq <- get_score(se_di)
-se_e_seq <- get_score(se_e)
+se_ui_seq <- get_score(se_ui, bw_cons)
+se_di_seq <- get_score(se_di, bw_cons)
+se_e_seq <- get_score(se_e, bw_cons)
 
 
 data.frame(event_id = d_se$event_id,
@@ -309,15 +305,15 @@ data.frame(event_id = d_se$event_id,
 }
 
 
-get_cons <- function(event_type, event_coordinates){
+get_cons <- function(event_type, event_coordinates, bw_cons){
   switch (event_type,
-          A3 = get_cons_a3(event_coordinates),
-          A5 = get_cons_a5(event_coordinates),
-          AL = get_cons_al(event_coordinates),
-          AF = get_cons_af(event_coordinates),
-          MX = get_cons_mx(event_coordinates),
-          RI = get_cons_ri(event_coordinates),
-          SE = get_cons_se(event_coordinates)
+          A3 = get_cons_a3(event_coordinates, bw_cons),
+          A5 = get_cons_a5(event_coordinates, bw_cons),
+          AL = get_cons_al(event_coordinates, bw_cons),
+          AF = get_cons_af(event_coordinates, bw_cons),
+          MX = get_cons_mx(event_coordinates, bw_cons),
+          RI = get_cons_ri(event_coordinates, bw_cons),
+          SE = get_cons_se(event_coordinates, bw_cons)
   )
 }
 
