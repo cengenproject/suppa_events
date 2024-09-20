@@ -17,7 +17,7 @@ gseq <- readDNAStringSet(wb_get_genome_path(289))
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240828_fig"
+export_dir <- "data/outs/240920_fig"
 
 
 
@@ -27,7 +27,8 @@ export_dir <- "data/outs/240828_fig"
 # Load ----
 
 #~ Neurons ----
-dpsi_dta <- read.table("data/240813_psi/240813.dpsi") |>
+
+dpsi_dta <- read.table("data/240918/neurons/240918.dpsi") |>
   rownames_to_column("event_id") |>
   filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
   as_tibble()
@@ -48,13 +49,20 @@ dpsi <- dpsi_dta |>
                        names = c("neurA", "neurB"),
                        cols_remove = FALSE) |>
   filter(neurA != "Ref",
-         neurB != "Ref")
+         neurB != "Ref") |>
+  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
+
+
+
+
+qs::qsave(dpsi, "intermediates/240918/240920_dpsi_neurons.qs")
+
+
 
 
 #~ Tissue ----
 
-
-dpsi_dta_tissue <- read.table("data/240828_koterniak.dpsi") |>
+dpsi_dta_tissue <- read.table("data/240918/koterniak/240918.dpsi") |>
   rownames_to_column("event_id") |>
   as_tibble()
 
@@ -75,123 +83,14 @@ dpsi_tissue <- dpsi_dta_tissue |>
                        cols_remove = FALSE) |>
   mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
 
-# qs::qsave(dpsi_tissue, "intermediates/240425_dpsi/prefilt_dpsi_tissue.qs")
-
-
-# filter ----
+qs::qsave(dpsi_tissue, "intermediates/240918/240920_dpsi_tissue.qs")
 
 
 
-# # filter from thresholded
-# # gene_expression_table <-  read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
-# #   as.data.frame() |>
-# #   rownames_to_column("gene_id") |>
-# #   pivot_longer(-gene_id,
-# #                names_to = "neuron_id",
-# #                values_to = "expressed") |>
-# #   mutate(is_expressed = expressed == 1L) |> select(-expressed)
-# 
-# gene_expression_table <- cengenDataSC::cengen_sc_3_bulk |>
-#   as.data.frame() |>
-#   rownames_to_column("gene_id") |>
-#   pivot_longer(-gene_id,
-#                names_to = "neuron_id",
-#                values_to = "expressed") |>
-#   mutate(is_expressed = expressed == 1L) |> select(-expressed)
-# 
-# 
-# neurons_here <- unique(gene_expression_table$neuron_id)
-# genes_with_known_expr <- unique(gene_expression_table$gene_id)
 
 
-# no filter
-neurons_here <- union(dpsi$neurA[!is.na(dpsi$dPSI)], dpsi$neurB[!is.na(dpsi$dPSI)])
-genes_with_known_expr <- unique(dpsi$gene_id[!is.na(dpsi$dPSI)])
+#~ check a few random examples ----
 
-dpsi <- dpsi |>
-  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
-
-
-
-# annotate expression
-
-dpsi <- dpsi |>
-  filter(neurA %in% neurons_here,
-         neurB %in% neurons_here,
-         gene_id %in% genes_with_known_expr) |>
-  left_join(gene_expression_table |> rename(expr_in_neurA = is_expressed),
-            by = c("gene_id", neurA = "neuron_id")) |>
-  left_join(gene_expression_table |> rename(expr_in_neurB = is_expressed),
-            by = c("gene_id", neurB = "neuron_id"))
-
-dpsi <- dpsi |>
-  mutate(detectable = expr_in_neurA & expr_in_neurB) |>
-  select( -expr_in_neurA, -expr_in_neurB) |>
-  mutate(is_ds = p.val < .1 & detectable & abs(dPSI) > .3)
-
-
-# qs::qsave(dpsi, "intermediates/240425_dpsi/filt_dpsi.qs")
-# qs::qsave(dpsi, "intermediates/240425_dpsi/prefilt_dpsi.qs")
-
-
-
-# psi <- read.delim("data/240301b_psiPerEvent.psi") |>
-#   rownames_to_column("event_id") |>
-#   as_tibble() |>
-#   separate_wider_regex(event_id,
-#                        patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
-#                                     event_type = "[SEA53MXRIFL]{2}", "\\:",
-#                                     event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
-#                        cols_remove = FALSE)
-# 
-# 
-# 
-# 
-# 
-# 
-# psi_lg <- pivot_longer(psi,
-#                        -c(gene_id, event_type, event_coordinates, event_id),
-#                        names_to = "sample_id",
-#                        values_to = "PSI") |>
-#   mutate(neuron_id = str_match(sample_id, "^([A-Zef0-9]{2,4})r[0-9]{1,4}")[,2])
-# 
-# 
-# 
-# tpm <- read.delim("data/231208_str_q_tx_TPM.tsv") |>
-#   rownames_to_column("transcript_id") |>
-#   as_tibble() |>
-#   mutate(gene_id = wb_tx2g(transcript_id, tx2g, warn_missing = TRUE),
-#          .after = "transcript_id")
-# 
-# 
-# 
-# stopifnot(all.equal(sort(unique(psi_lg$event_id)),
-#                     sort(unique(dpsi$event_id))))
-# 
-# stopifnot(all.equal(
-#   sort(unique(psi_lg$neuron_id)) |>
-#     setdiff(c("ADF", "M4", "Ref")),
-#   sort(unique(
-#     union(dpsi$neurA,
-#           dpsi$neurB))
-#   ) |> setdiff("Ref")
-# ))
-# 
-# 
-# 
-# #~ check a few random examples ----
-# my_ev <- sample(psi_lg$event_id, 1)
-# my_neurA <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
-# my_neurB <- sample(psi_lg$neuron_id |> setdiff(c("ADF", "M4")), 1)
-# 
-# 
-# psi_lg |>
-#   filter(event_id == my_ev,
-#          neuron_id %in% c(my_neurA, my_neurB)) |>
-#   summarize(mean_PSI = mean(PSI, na.rm = TRUE),
-#             .by = neuron_id) |>
-#   (\(x) print(x))() |>
-#   pull(mean_PSI) |> diff()
 
 
 my_ev <- sample(dpsi$event_id[which(abs(dpsi$dPSI) > .3)], 1)
@@ -339,20 +238,20 @@ dpsi |>
             .by = c(event_id, event_type)) |>
   mutate(
     category = case_when(
-    !gene_expressed ~ "not measured",
-    !has_ds ~ "no dAS in neurons",
-    .default = "dAS",
-  ) |> fct_inorder(),
-  event_type = case_match(
-    event_type,
-    "A3" ~ "Alt. 3' ss",
-    "A5" ~ "Alt. 5' ss",
-    "AF" ~ "Alt. first exon",
-    "AL" ~ "Alt. last exon",
-    "MX" ~ "Multiple exons",
-    "RI" ~ "Intron retention",
-    "SE" ~ "Cassette exon"
-  )) |>
+      !gene_expressed ~ "not measured",
+      !has_ds ~ "no dAS in neurons",
+      .default = "dAS",
+    ) |> fct_inorder(),
+    event_type = case_match(
+      event_type,
+      "A3" ~ "Alt. 3' ss",
+      "A5" ~ "Alt. 5' ss",
+      "AF" ~ "Alt. first exon",
+      "AL" ~ "Alt. last exon",
+      "MX" ~ "Multiple exons",
+      "RI" ~ "Intron retention",
+      "SE" ~ "Cassette exon"
+    )) |>
   select(event_type, category) |>
   ggplot() +
   theme_classic() +
@@ -379,7 +278,7 @@ neuron_ds_sero_vs_all <- dpsi |>
   filter(sero == 1) |>
   summarize(neuron_ds_sero = any(is_ds),
             .by = c(event_id, event_type))
-  
+
 tissue_ds_sero_vs_all <- dpsi_tissue |>
   mutate(sero = (neurA =="serotonergic" & neurB == "neurons") |
            (neurA =="neurons" & neurB == "serotonergic")) |>
@@ -391,9 +290,9 @@ event_id_both <- union(neuron_ds_sero_vs_all$event_id,
                        tissue_ds_sero_vs_all$event_id)
 
 table(CeNGEN = (neuron_ds_sero_vs_all$neuron_ds_sero |>
-        setNames(neuron_ds_sero_vs_all$event_id))[event_id_both],
+                  setNames(neuron_ds_sero_vs_all$event_id))[event_id_both],
       Koterniak = (tissue_ds_sero_vs_all$tissue_ds_sero |>
-                  setNames(tissue_ds_sero_vs_all$event_id))[event_id_both])
+                     setNames(tissue_ds_sero_vs_all$event_id))[event_id_both])
 
 # example fail
 left_join(neuron_ds_sero_vs_all,
@@ -560,7 +459,7 @@ seq_gc <- map2(coords_all$event_type |> set_names(),
                    names_to = c("measurement", ".value")) |>
       mutate(percent_GC = 100 * gc/width)
   })
-  
+
 
 
 
@@ -844,7 +743,7 @@ gg_cs_a3 <- d_a3 |>
 
 
 #~~ A5 ----
-            
+
 gg_l_a5 <- d_a5 |>
   filter(is_detectable) |>
   ggplot() +
@@ -1168,9 +1067,9 @@ gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
 # 
 # ggsave("percGC_af.pdf", plot = gg_gc_af, path = export_dir,
 #        width = 18, height = 6, units = "cm")
- # ggsave("cons_af.pdf", plot = gg_cs_af, path = export_dir,
- #       width = 18, height = 6, units = "cm")
- # 
+# ggsave("cons_af.pdf", plot = gg_cs_af, path = export_dir,
+#       width = 18, height = 6, units = "cm")
+# 
 # 
 # 
 # 
@@ -1212,8 +1111,8 @@ gr <-gridExtra::arrangeGrob(gr_row_up, gr_row_dn)
 #        width = 12, height = 6, units = "cm")
 # ggsave("cons_se.pdf", plot = gg_cs_se, path = export_dir,
 #               width = 12, height = 6, units = "cm")
-       
-       
+
+
 # Stat tests ----
 
 tests <- map_dfr(list(d_a3, d_a5, d_af, d_al, d_mx, d_se),
@@ -1684,7 +1583,7 @@ skipped_ex_by_pairs |>
          prop_ds = nb_ds/nb_tot) |>
   mutate(gene_name = if_else((is_microexon & prop_ds > .15) |
                                (!is_microexon & prop_ds > .38),
-                               str_split_i(event_id, ";",1) |>
+                             str_split_i(event_id, ";",1) |>
                                i2s(gids, warn_missing = TRUE),
                              "")) |>
   mutate(type = if_else(is_microexon, "microexon", "longer exon")) |>

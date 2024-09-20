@@ -11,7 +11,7 @@ library(wbData)
 # tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240918_fig"
+export_dir <- "data/outs/240920_fig"
 
 # Load ----
 
