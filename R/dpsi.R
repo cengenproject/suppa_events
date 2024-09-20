@@ -11,7 +11,7 @@ library(wbData)
 tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240813_fig"
+export_dir <- "data/outs/240828_fig"
 
 
 
@@ -20,7 +20,7 @@ export_dir <- "data/outs/240813_fig"
 
 # Load ----
 
-
+#~ Neurons ----
 dpsi_dta <- read.table("data/240813_psi/240813.dpsi") |>
   rownames_to_column("event_id") |>
   filter(event_id != "WBGene00010673;MX:IV:12574301-12574620:12576543-12576754:12573993-12576902:12577002-12577062:+") |>
@@ -45,31 +45,57 @@ dpsi <- dpsi_dta |>
          neurB != "Ref")
 
 
+#~ Tissue ----
+
+
+dpsi_dta_tissue <- read.table("data/240828_koterniak.dpsi") |>
+  rownames_to_column("event_id") |>
+  as_tibble()
+
+
+dpsi_tissue <- dpsi_dta_tissue |>
+  pivot_longer(-event_id,
+               names_sep = "_",
+               names_to = c("neuron_pair", ".value")) |>
+  separate_wider_regex(event_id,
+                       patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+                                    event_type = "[SEA53MXRIFL]{2}", "\\:",
+                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+                       cols_remove = FALSE) |>
+  mutate(gene_name = i2s(gene_id, gids, warn_missing = TRUE), .after = "gene_id") |>
+  separate_wider_delim(neuron_pair,
+                       delim = ".",
+                       names = c("neurA", "neurB"),
+                       cols_remove = FALSE) |>
+  mutate(is_ds = p.val < .1 & abs(dPSI) > .3)
+
+# qs::qsave(dpsi_tissue, "intermediates/240425_dpsi/prefilt_dpsi_tissue.qs")
+
 
 # filter ----
 
 
 
-# filter from thresholded
-# gene_expression_table <-  read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
+# # filter from thresholded
+# # gene_expression_table <-  read.delim("../majiq/data/2024-03-05_alec_integration/bsn12_subtracted_integrated_binarized_expression_withVDDD_FDR0.05_030424.tsv") |>
+# #   as.data.frame() |>
+# #   rownames_to_column("gene_id") |>
+# #   pivot_longer(-gene_id,
+# #                names_to = "neuron_id",
+# #                values_to = "expressed") |>
+# #   mutate(is_expressed = expressed == 1L) |> select(-expressed)
+# 
+# gene_expression_table <- cengenDataSC::cengen_sc_3_bulk |>
 #   as.data.frame() |>
 #   rownames_to_column("gene_id") |>
 #   pivot_longer(-gene_id,
 #                names_to = "neuron_id",
 #                values_to = "expressed") |>
 #   mutate(is_expressed = expressed == 1L) |> select(-expressed)
-
-gene_expression_table <- cengenDataSC::cengen_sc_3_bulk |>
-  as.data.frame() |>
-  rownames_to_column("gene_id") |>
-  pivot_longer(-gene_id,
-               names_to = "neuron_id",
-               values_to = "expressed") |>
-  mutate(is_expressed = expressed == 1L) |> select(-expressed)
-
-
-neurons_here <- unique(gene_expression_table$neuron_id)
-genes_with_known_expr <- unique(gene_expression_table$gene_id)
+# 
+# 
+# neurons_here <- unique(gene_expression_table$neuron_id)
+# genes_with_known_expr <- unique(gene_expression_table$gene_id)
 
 
 # no filter
@@ -185,11 +211,15 @@ dpsi |>
 # Cleaned up version
 # see below ("check a few events in genome browser"): low dPSI is often meaningless and in the noise
 
-dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
-dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs") |>
-  filter(event_type != "RI")
+# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
+# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi_thres_integrated.qs") |>
+#   filter(event_type != "RI")
 
 dpsi <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi.qs") |>
+  mutate(detectable = !is.na(dPSI))
+
+
+dpsi_tissue <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi_tissue.qs") |>
   mutate(detectable = !is.na(dPSI))
 
 
@@ -224,8 +254,10 @@ dpsi <- qs::qread("intermediates/240425_dpsi/prefilt_dpsi.qs") |>
 # note: already corrected for multiple testing (option -gc)
 
 dpsi$p.val |> hist(breaks = 70)
+dpsi_tissue$p.val |> hist(breaks = 70)
 
 table(dpsi$p.val < .05)
+table(dpsi_tissue$p.val < .05)
 
 dpsi |>
   filter(detectable) |>
@@ -259,6 +291,18 @@ dpsi |>
   distinct() |>
   pull(event_type) |>
   table()
+
+
+
+
+dpsi_tissue |>
+  filter(detectable) |>
+  select(event_id, event_type) |>
+  distinct() |>
+  pull(event_type) |>
+  table()
+
+
 
 
 
@@ -318,6 +362,110 @@ dpsi |>
 
 # ggsave("ds_per_type.pdf", path = export_dir,
 #        width = 16, height = 9, units = "cm")
+
+
+
+#~ compare neurons and tissues DAS ----
+
+# serotonergic: keep only comparisons of a sero neuron and a non-sero, check if DAS
+neuron_ds_sero_vs_all <- dpsi |>
+  mutate(sero = neurA %in% c("ADF" ,"AFD","HSN","NSM") + neurB %in% c("ADF" ,"AFD","HSN","NSM")) |>
+  filter(sero == 1) |>
+  summarize(neuron_ds_sero = any(is_ds),
+            .by = c(event_id, event_type))
+  
+tissue_ds_sero_vs_all <- dpsi_tissue |>
+  mutate(sero = (neurA =="serotonergic" & neurB == "neurons") |
+           (neurA =="neurons" & neurB == "serotonergic")) |>
+  filter(sero == 1) |>
+  summarize(tissue_ds_sero = any(is_ds),
+            .by = c(event_id, event_type))
+
+event_id_both <- union(neuron_ds_sero_vs_all$event_id,
+                       tissue_ds_sero_vs_all$event_id)
+
+table(CeNGEN = (neuron_ds_sero_vs_all$neuron_ds_sero |>
+        setNames(neuron_ds_sero_vs_all$event_id))[event_id_both],
+      Koterniak = (tissue_ds_sero_vs_all$tissue_ds_sero |>
+                  setNames(tissue_ds_sero_vs_all$event_id))[event_id_both])
+
+# example fail
+left_join(neuron_ds_sero_vs_all,
+          tissue_ds_sero_vs_all,
+          by = c("event_id", "event_type")) |>
+  filter(neuron_ds_sero,  !tissue_ds_sero) |> #pull(event_type) |> table()
+  filter(event_type == "SE") |>
+  slice_sample(n = 3) |>
+  pull(event_id) -> myev
+# myev <- "WBGene00015512;SE:II:7776296-7776351:7776505-7777667:-"
+
+# both agree that there is DAS of sero vs all
+myev <- "WBGene00006438;SE:IV:9119961-9120195:9120266-9127195:+"
+myev <- "WBGene00016415;SE:II:5204991-5205444:5205632-5206578:+"
+myev <- "WBGene00017053;SE:IV:7227507-7227586:7227617-7227696:-"
+
+
+# Koterniak DAS not CeNGEN
+myev <- "WBGene00001851;SE:V:20783222-20783326:20783528-20783738:+"
+myev <- "WBGene00015512;SE:II:7776296-7776351:7776505-7777667:-"
+myev <- "WBGene00019466;SE:V:9343416-9343501:9343567-9343676:-"
+
+# CeNGEN DAS not Koterniak
+myev <- "WBGene00009304;SE:I:14832132-14832841:14832867-14834698:-"
+myev <- "WBGene00000201;SE:III:12052714-12053486:12053506-12053586:-"
+myev <- "WBGene00018335;SE:IV:8609921-8610384:8610449-8611376:+"
+
+
+dpsi |>
+  filter(event_id == myev,
+         neurA %in% c("ADF" ,"AFD","HSN","NSM") | neurB %in% c("ADF" ,"AFD","HSN","NSM"),
+         is_ds == TRUE) |> View()
+
+dpsi_tissue |>
+  filter(event_id == myev,
+         is_ds == TRUE) |> View()
+
+# psi_tissue |>
+#   filter(event_id == myev) |>
+#   as.data.frame()
+
+psi_lg |>
+  filter(event_id == myev,
+         neuron_id %in% (unique(psi_lg$neuron_id) |> setdiff(c("ADF" ,"AFD","HSN","NSM")) |> sample(4)))
+psi_lg |>
+  filter(event_id == myev,
+         neuron_id %in% c("ADF" ,"AFD","HSN","NSM", "OLL"))
+
+
+psi_lg_tissue |>
+  filter(event_id == myev,
+         neuron_id %in% c("neurons","serotonergic")) |> as.data.frame()
+
+
+
+# dopaminergic: keep only comparisons of a dopa neuron and a non-dopa, check if DAS
+neuron_ds_dopa_vs_all <- dpsi |>
+  mutate(dopa = neurA %in% c("CEP") + neurB %in% c("CEP")) |>
+  filter(dopa == 1) |>
+  summarize(neuron_ds_dopa = any(is_ds),
+            .by = c(event_id, event_type))
+
+tissue_ds_dopa_vs_all <- dpsi_tissue |>
+  mutate(dopa = (neurA =="dopaminergic" & neurB == "neurons") |
+           (neurA =="neurons" & neurB == "dopaminergic")) |>
+  filter(dopa == 1) |>
+  summarize(tissue_ds_dopa = any(is_ds),
+            .by = c(event_id, event_type))
+
+event_id_both <- union(neuron_ds_dopa_vs_all$event_id,
+                       tissue_ds_dopa_vs_all$event_id)
+
+table(neuron = (neuron_ds_dopa_vs_all$neuron_ds_dopa |>
+                  setNames(neuron_ds_dopa_vs_all$event_id))[event_id_both],
+      tissue = (tissue_ds_dopa_vs_all$tissue_ds_dopa |>
+                  setNames(tissue_ds_dopa_vs_all$event_id))[event_id_both])
+
+
 
 
 

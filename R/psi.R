@@ -11,11 +11,12 @@ library(wbData)
 # tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
-export_dir <- "data/outs/240813_fig"
+export_dir <- "data/outs/240918_fig"
 
 # Load ----
 
-psi <- read.delim("data/240813_psi/240813_psiPerEvent.psi") |>
+#~ Neuron level ----
+psi <- read.delim("data/240918/neurons/240918_psiPerEvent.psi") |>
   rownames_to_column("event_id") |>
   as_tibble() |>
   separate_wider_regex(event_id,
@@ -54,6 +55,74 @@ neurs_sequenced <- unique(psi_lg$neuron_id)
 
 filt_psi_lg <- psi_lg |>
   filter(! is.na(PSI))
+
+
+#~ Tissue level ----
+psi_tissue <- read.delim("data/240918/koterniak/240918_psiPerEvent.psi") |>
+  rownames_to_column("event_id") |>
+  as_tibble() |>
+  separate_wider_regex(event_id,
+                       patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+                                    event_type = "[SEA53MXRIFL]{2}", "\\:",
+                                    event_coordinates = "[IXV]+\\:[0-9:\\-]+:[+-]$"),
+                       cols_remove = FALSE)
+
+psi_lg_tissue <- pivot_longer(psi_tissue,
+                       -c(gene_id, event_type, event_coordinates, event_id),
+                       names_to = "sample_id",
+                       values_to = "PSI") |>
+  mutate(neuron_id = str_match(sample_id, "^([a-z]+)_[0-9]{7}")[,2])
+
+
+# do not filter by neuron (rely on prefiltering)
+tissues_sequenced <- unique(psi_lg_tissue$neuron_id)
+
+
+filt_psi_lg_tissue <- psi_lg_tissue |>
+  filter(! is.na(PSI))
+
+
+
+
+
+
+
+# # Compare neurons tissues ----
+# 
+# list(in_neurons = filt_psi_lg$event_id |> unique() |> sort(),
+#           in_tissues = filt_psi_lg_tissue$event_id |> unique() |> sort()) |>
+#   eulerr::euler() |>
+#   plot(quantities = TRUE)
+# 
+# mat_bound <- bind_rows(filt_psi_lg,
+#           filt_psi_lg_tissue) |>
+#   select(event_id, sample_id, PSI) |>
+#   pivot_wider(id_cols = event_id,
+#               names_from = sample_id,
+#               values_from = PSI) |>
+#   column_to_rownames("event_id") |>
+#   as.matrix()
+# 
+# nbna <- apply(mat_bound, 1, \(.x) sum(is.na(.x)))
+# hist(nbna)
+# table(nbna < 75)
+# pheatmap::pheatmap(mat_bound[nbna < 75,],
+#                    show_rownames = FALSE)
+# mat_cor <- cor(mat_bound, use = "pairwise.complete.obs")
+# 
+# printMat::matimage(mat_cor)
+# colnames(mat_cor)
+# pheatmap::pheatmap(mat_cor)
+# 
+# 
+# submat <- mat_bound[nbna < 75 & grepl(";SE:", rownames(mat_bound)),]
+# printMat::matimage(submat)
+# pheatmap::pheatmap(submat,
+#                    show_rownames = FALSE)
+
+
+
+
 
 
 # Specificity ----
