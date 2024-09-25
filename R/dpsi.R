@@ -14,7 +14,6 @@ library(wbData)
 gseq <- readDNAStringSet(wb_get_genome_path(289))
 
 
-tx2g <- wb_load_tx2gene(289)
 gids <- wb_load_gene_ids(289)
 
 export_dir <- "data/outs/240920_fig"
@@ -548,7 +547,7 @@ features_long <- features_long |>
 # qs::qsave(features_long,
 #           "intermediates/240918/240920_features.qs")
 
-
+features_long <- qs::qread("intermediates/240918/240920_features.qs")
 
 
 #~ Plots ----
@@ -634,7 +633,7 @@ medians <- features_long |>
 
 
 
-table(tests$padj < .1)
+table(tests$padj < .05)
 
 hist(tests$p_val, breaks = 40)
 hist(tests$padj, breaks = 40)
@@ -648,17 +647,25 @@ tests |>
 
 
 
-tests |>
+table_signif_seq_feats <- tests |>
   left_join(medians,
             by = c("event_type", "feature", "metric")) |>
   filter(padj < 0.1) |>
   mutate(sig = cut(padj,
                    breaks =c(0, .001, .01, .05, .1),
                    labels =   c("***", "**", "*", "#"))) |>
-  select(event_type, feature, metric, median_ds, median_nonds, padj, sig) |>
+  select(event_type, feature, metric, median_ds, median_nonds, padj, sig)
+
+table_signif_seq_feats |>
   as.data.frame()
 
-# see outs/sig_table.xlsx
+# Save results (table 1)
+
+# table_signif_seq_feats |>
+#   writexl::write_xlsx(file.path(export_dir, "sequence_features_signif.xlsx"))
+
+
+# save all seq features (supplementary table)
 
 # tests |>
 #   left_join(medians,
@@ -672,41 +679,64 @@ tests |>
 #          `median in dAS events` = median_ds,
 #          `median in non-dAS events` = median_nonds,
 #          `significance level` = sig) |>
-#   writexl::write_xlsx(paste0(export_dir, "/all_comparisons.xlsx"))
+#   writexl::write_xlsx(file.path(export_dir, "sequence_features_all_tests.xlsx"))
 
+# save all events for source data
+
+# features_long |>
+#   writexl::write_xlsx(file.path(export_dir, "sequence_feat_all_sourceData.xlsx"))
 
 
 #~ Focus on some of the significant changes ----
 
+#~~ AF prox exon length ----
 
-# se exon length
-
-d_se_med <- d_se |>
-  filter(is_detectable,
-         feature == "exon") |>
+d_af_pe_med <- features_long |>
+  filter(event_type == "AF",
+         feature == "proximal_exon") |>
+  filter(is_detectable) |>
   summarize(median = median(length),
             .by = has_ds)
 
-d_se |>
+
+features_long |>
+  filter(event_type == "AF",
+         feature == "proximal_exon") |>
   filter(is_detectable) |>
-  filter(feature == "exon") |>
   ggplot() +
   theme_classic() +
-  geom_density(aes(x = length, fill = has_ds),
-               alpha = .5) +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3, bandwidth = .1) +
   geom_vline(aes(xintercept = median, color = has_ds),
-             data = d_se_med,
-             linetype = 'dotted', linewidth = 1) +
+             data = d_af_pe_med,
+             linetype = 'dashed', linewidth = 1) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_color_manual(values = c("grey30", "darkred")) +
-  scale_y_continuous(limits = c(0,1.2)) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   theme(legend.position = "none") +
-  xlab("Skipped exon length (bp)")
+  xlab("Alternative first exon, proximal exon length (bp)") + ylab(NULL)
 
-d_se |>
+# ggsave("ridge_af_pe_length.pdf", path = export_dir,
+#        width = 5, height = 5, units = "cm")
+
+
+
+
+
+#~~ SE ex length ----
+d_se_med <- features_long |>
+  filter(event_type == "SE",
+         feature == "exon") |>
   filter(is_detectable) |>
-  filter(feature == "exon") |>
+  summarize(median = median(length),
+            .by = has_ds)
+
+
+features_long |>
+  filter(event_type == "SE",
+         feature == "exon") |>
+  filter(is_detectable) |>
   mutate(has_ds = if_else(has_ds, "dAS", "non-dAS") |>
            factor(levels = c("non-dAS", "dAS"))) |>
   ggplot() +
@@ -717,95 +747,33 @@ d_se |>
              data = d_se_med,
              linetype = 'dashed', linewidth = 1) +
   scale_x_log10(labels = scales::label_comma()) +
+  # scale_x_continuous(limits = c(0, 500)) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
-  # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
   xlab("Skipped exon length (bp)") + ylab(NULL)
 
 
-# ggsave("ridge_se_exon_length_density.pdf", path = export_dir,
+# ggsave("ridge_se_exon_length.pdf", path = export_dir,
 #        width = 5, height = 5, units = "cm")
 
 
+#~~ AF dist intron length ----
 
-# AF dist exon length
-
-d_af_de_med <- d_af |>
-  filter(is_detectable,
-         feature == "distal_exon") |>
-  summarize(median = median(length),
-            .by = has_ds)
-
-# d_af |>
-#   filter(is_detectable) |>
-#   filter(feature == "distal_exon") |>
-#   ggplot() +
-#   theme_classic() +
-#   geom_density(aes(x = length, fill = has_ds),
-#                alpha = .5) +
-#   scale_x_log10(labels = scales::label_comma()) +
-#   scale_fill_manual(values = c("grey30", "darkred")) +
-#   scale_y_continuous(limits = c(0,1.2)) +
-#   theme(legend.position = "none") +
-#   xlab("Alternative first exon, distal exon length (bp)")
-# 
-# # ggsave("af_distal_exon_length_density.pdf", path = export_dir,
-# #        width = 10, height = 7, units = "cm")
-
-d_af |>
-  filter(is_detectable) |>
-  filter(feature == "distal_exon") |>
-  ggplot() +
-  theme_classic() +
-  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
-                                scale = 3) +
-  geom_vline(aes(xintercept = median, color = has_ds),
-             data = d_af_de_med,
-             linetype = 'dashed', linewidth = 1) +
-  scale_x_log10(labels = scales::label_comma()) +
-  scale_fill_manual(values = c("grey30", "darkred")) +
-  scale_color_manual(values = c("grey50", "red3")) +
-  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
-  # scale_y_continuous(limits = c(0,1.2)) +
-  theme(legend.position = "none") +
-  xlab("Alternative first exon, distal exon length (bp)") + ylab(NULL)
-
-# ggsave("ridge_af_distal_exon_length_density.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
-
-
-
-
-# af dist intron length
-
-
-# d_af |>
-#   filter(is_detectable) |>
-#   filter(feature == "distal_intron") |>
-#   ggplot() +
-#   theme_classic() +
-#   geom_density(aes(x = length, fill = has_ds),
-#                alpha = .5) +
-#   scale_x_log10(limits = c(100, 40000)) +
-#   scale_fill_manual(values = c("grey30", "darkred")) +
-#   scale_y_continuous(limits = c(0,1.2)) +
-#   theme(legend.position = "none") +
-#   xlab("Alternative first exon, distal intron length (bp)")
-# 
-# # ggsave("af_distal_intron_length_density.pdf", path = export_dir,
-# #        width = 15, height = 8, units = "cm")
-
-d_af_di_med <- d_af |>
-  filter(is_detectable,
+d_af_di_med <- features_long |>
+  filter(event_type == "AF",
          feature == "distal_intron") |>
+  filter(is_detectable) |>
   summarize(median = median(length),
             .by = has_ds)
 
-d_af |>
+
+
+features_long |>
+  filter(event_type == "AF",
+         feature == "distal_intron") |>
   filter(is_detectable) |>
-  filter(feature == "distal_intron") |>
   ggplot() +
   theme_classic() +
   ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
@@ -821,46 +789,33 @@ d_af |>
   theme(legend.position = "none") +
   xlab("Alternative first exon, distal intron length (bp)") + ylab(NULL)
 
-# ggsave("ridge_af_distal_intron_length_density.pdf", path = export_dir,
+# ggsave("ridge_af_di_length.pdf", path = export_dir,
 #        width = 5, height = 5, units = "cm")
 
 
 
-# af prox exon length
 
-d_af_pe_med <- d_af |>
-  filter(is_detectable,
-         feature == "proximal_exon") |>
+#~~ A5 intron length ----
+
+d_a5_i_med <- features_long |>
+  filter(event_type == "A5",
+         feature == "intron") |>
+  filter(is_detectable) |>
   summarize(median = median(length),
             .by = has_ds)
 
 
-# d_af |>
-#   filter(is_detectable) |>
-#   filter(feature == "proximal_exon") |>
-#   ggplot() +
-#   theme_classic() +
-#   geom_density(aes(x = length, fill = has_ds),
-#                alpha = .5) +
-#   scale_x_log10() +
-#   scale_fill_manual(values = c("grey30", "darkred")) +
-#   scale_y_continuous(limits = c(0,1.2)) +
-#   theme(legend.position = "none") +
-#   xlab("Alternative first exon, proximal exon length (bp)")
-# 
-# # ggsave("af_proximal_exon_length_density.pdf", path = export_dir,
-# #        width = 15, height = 8, units = "cm")
 
-
-d_af |>
+features_long |>
+  filter(event_type == "A5",
+         feature == "intron") |>
   filter(is_detectable) |>
-  filter(feature == "proximal_exon") |>
   ggplot() +
   theme_classic() +
   ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
-                                scale = 3, bandwidth = .1) +
+                                scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
-             data = d_af_pe_med,
+             data = d_a5_i_med,
              linetype = 'dashed', linewidth = 1) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
@@ -868,9 +823,9 @@ d_af |>
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal exon length (bp)") + ylab(NULL)
+  xlab("Alternative 5' splice site, intron length (bp)") + ylab(NULL)
 
-# ggsave("ridge_af_proximal_exon_length_density.pdf", path = export_dir,
+# ggsave("ridge_a5_i_length.pdf", path = export_dir,
 #        width = 5, height = 5, units = "cm")
 
 
@@ -878,51 +833,72 @@ d_af |>
 
 
 
-# AF dist intr conservation
-d_af_di_cons_med <- d_af |>
-  filter(is_detectable,
-         feature == "distal_intron") |>
+
+#~~ AF prox intr conservation ----
+d_af_pi_cons_med <- features_long |>
+  filter(event_type == "AF",
+         feature == "proximal_intron") |>
+  filter(is_detectable) |>
   summarize(median = median(conservation),
             .by = has_ds)
 
 
 
-# d_af |>
-#   filter(is_detectable) |>
-#   filter(feature == "distal_intron") |>
-#   ggplot() +
-#   theme_classic() +
-#   geom_density(aes(x = conservation, fill = has_ds),
-#                alpha = .5, bounds = c(0,1)) +
-#   scale_fill_manual(values = c("grey30", "darkred")) +
-#   scale_x_continuous(limits = c(0,1)) +
-#   theme(legend.position = "none") +
-#   xlab("Alternative first exon, distal intron conservation score")
-# 
-# # ggsave("af_distal_intron_conservation_density.pdf", path = export_dir,
-# #        width = 15, height = 8, units = "cm")
 
-
-
-
-d_af |>
+features_long |>
+  filter(event_type == "AF",
+         feature == "proximal_intron") |>
   filter(is_detectable) |>
-  filter(feature == "distal_intron") |>
   ggplot() +
   theme_classic() +
   ggridges::geom_density_ridges(aes(x = conservation, y = has_ds, fill = has_ds),
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
-             data = d_af_di_cons_med,
+             data = d_af_pi_cons_med,
              linetype = 'dashed', linewidth = 1) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal intron conservation score") + ylab(NULL)
+  xlab("Alternative first exon, proximal intron conservation score") + ylab(NULL)
 
-# ggsave("ridge_af_distal_intron_conservation_density.pdf", path = export_dir,
+# ggsave("ridge_af_pi_cons.pdf", path = export_dir,
+#        width = 5, height = 5, units = "cm")
+
+
+
+#~~ AF dist exon length ----
+
+d_af_de_med <- features_long |>
+  filter(event_type == "AF",
+         feature == "distal_exon") |>
+  filter(is_detectable) |>
+  summarize(median = median(length),
+            .by = has_ds)
+
+
+
+features_long |>
+  filter(event_type == "AF",
+         feature == "distal_exon") |>
+  filter(is_detectable) |>
+  ggplot() +
+  theme_classic() +
+  ggridges::geom_density_ridges(aes(x = length, y = has_ds, fill = has_ds),
+                                scale = 3) +
+  geom_vline(aes(xintercept = median, color = has_ds),
+             data = d_af_de_med,
+             linetype = 'dashed', linewidth = 1) +
+  scale_x_log10(labels = scales::label_comma()) +
+  scale_fill_manual(values = c("grey30", "darkred")) +
+  scale_color_manual(values = c("grey50", "red3")) +
+  scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
+  # scale_y_continuous(limits = c(0,1.2)) +
+  theme(legend.position = "none") +
+  xlab("Alternative first exon, distal exon length (bp)") + ylab(NULL)
+
+# ggsave("ridge_af_de_length.pdf", path = export_dir,
 #        width = 5, height = 5, units = "cm")
 
 
@@ -935,12 +911,259 @@ d_af |>
 
 
 
+# >> Protein sequence << ----
+
+
+proportions_ndf <- features_long |>
+  filter((event_type == "A5" & feature == "overhang") |
+           (event_type == "A3" & feature == "overhang") |
+           (event_type == "SE" & feature == "exon") ) |>
+  mutate(length_is_triple = (length %% 3) == 0) |>
+  nest(.by = event_type) |>
+  mutate(tab = map(data,
+             ~ {
+               .x |>
+                 summarize(n_frame = sum(length_is_triple),
+                           n_not_frame = sum(!length_is_triple),
+                           .by = c(has_ds, is_detectable)) |>
+                 mutate(prop_in_frame = round( 100 * n_frame / (n_frame + n_not_frame) )) |>
+                 arrange(is_detectable, has_ds)
+             }
+  ))
+
+proportions_l <- proportions_ndf$tab |> set_names(proportions_ndf$event_type)
+
+
+
+
+imap(proportions_l,
+     \(tab, ev_t){
+       tab |>
+         select(-prop_in_frame) |>
+         pivot_longer(-c(has_ds, is_detectable),
+                      names_to = "frame",
+                      values_to = "count") |>
+         add_column(event_type = ev_t)
+  }) |>
+  bind_rows() |>
+  mutate(
+    category = case_when(
+      ! is_detectable ~ "not measured",
+      has_ds ~ "DAS",
+      .default = "not DAS") |>
+      factor(levels = c("not measured", "not DAS", "DAS") |> rev()),
+    frame = factor(frame, levels = c("n_not_frame", "n_frame")),
+    event_type = case_match(event_type,
+                            "A3" ~ "Alt. 3' ss",
+                            "A5" ~ "Alt. 5' ss",
+                            "SE" ~ "Cassette exon")
+  ) |>
+  ggplot() +
+  theme_classic() +
+  guides(fill = guide_legend(title = NULL )) +
+  theme(legend.position = "top") +
+  scale_fill_brewer(type = "qual",
+                    labels = c("Frame-shifting","Frame-preserving")) +
+  xlab(NULL) +
+  ylab("Number of events") +
+  coord_flip() +
+  facet_wrap(~ event_type) +
+  geom_col(aes(x = category, y = count, fill = frame))
+
+
+# Save figure
+
+# ggsave("events_length_triple.pdf", path = export_dir,
+#        width = 15, height = 6, units = "cm")
+
+
+# Save table
+
+# proportions_l |>
+#   imap(~ .x |> add_column(event_type = .y, .before = 1)) |>
+#   map(~{
+#     test <- .x |>
+#         filter(is_detectable) |>
+#         select(n_frame, n_not_frame) |>
+#         chisq.test()
+#     
+#     .x |>
+#       add_column(pvalue = c(0,0, test[["p.value"]] ))
+#     
+#     }) |>
+#   bind_rows() |>
+#   mutate(
+#     category = case_when(
+#       ! is_detectable ~ "not measured",
+#       has_ds ~ "DAS",
+#       .default = "not DAS") |>
+#       factor(levels = c("not measured", "not DAS", "DAS")),
+#     event_type = case_match(
+#       event_type,
+#       "A3" ~ "Alt. 3' ss",
+#       "A5" ~ "Alt. 5' ss",
+#       "SE" ~ "Cassette exon"
+#     ),
+#     n_total = n_frame + n_not_frame) |>
+#   select(`Event type` = event_type,
+#          `Quantification` = category,
+#          `Frame-preserving events` = n_frame,
+#          `Total events` = n_total,
+#          `% in frame` = prop_in_frame,
+#          `p-value` = pvalue) |>
+#   writexl::write_xlsx(file.path(export_dir, "events_length_triple.xlsx"))
+
+
+
+#~ Position ----
+
+# Are the frame-shifting events near extremities of the genes?
+
+
+
+gcoords <- wb_load_gene_coords(289) |>
+  select(gene_id,
+         gstart = start,
+         gend = end)
+
+
+
+
+pos_SE <- coords_all$coords[[ which(coords_all$event_type == "SE") ]] |>
+  mutate(gene_id = str_match(event_id, "^(WBGene[0-9]+);")[,2],
+         .before = 1) |>
+  mutate(length_is_triple = (exon_length %% 3) == 0) |>
+  left_join(gcoords,
+            by = "gene_id") |>
+  mutate(distance_from_start = if_else(strand == "+",
+                                    exon_start - gstart,
+                                    gend - exon_end),
+         distance_from_end = if_else(strand == "+",
+                                     gend - exon_end,
+                                     exon_start - gstart)) |>
+  select(event_id, distance_from_start, distance_from_end, length_is_triple) |>
+  full_join(
+    features_long |>
+      filter(event_type == "SE") |>
+      select(event_type, event_id, has_ds, is_detectable) |>
+      distinct(),
+    by = "event_id"
+  )
+stopifnot( !any(is.na(pos_SE)) )
+
+
+
+
+pos_A5 <- coords_all$coords[[ which(coords_all$event_type == "A5") ]] |>
+  mutate(gene_id = str_match(event_id, "^(WBGene[0-9]+);")[,2],
+         .before = 1) |>
+  mutate(length_is_triple = (overhang_length %% 3) == 0) |>
+  left_join(gcoords,
+            by = "gene_id") |>
+  mutate(distance_from_start = if_else(strand == "+",
+                                       overhang_start - gstart,
+                                       gend - overhang_end),
+         distance_from_end = if_else(strand == "+",
+                                     gend - overhang_end,
+                                     overhang_start - gstart)) |>
+  select(event_id, distance_from_start, distance_from_end, length_is_triple) |>
+  full_join(
+    features_long |>
+      filter(event_type == "A5") |>
+      select(event_type, event_id, has_ds, is_detectable) |>
+      distinct(),
+    by = "event_id"
+  )
+stopifnot( !any(is.na(pos_A5)) )
+
+
+
+pos_A3 <- coords_all$coords[[ which(coords_all$event_type == "A3") ]] |>
+  mutate(gene_id = str_match(event_id, "^(WBGene[0-9]+);")[,2],
+         .before = 1) |>
+  mutate(length_is_triple = (overhang_length %% 3) == 0) |>
+  left_join(gcoords,
+            by = "gene_id") |>
+  mutate(distance_from_start = if_else(strand == "+",
+                                       overhang_start - gstart,
+                                       gend - overhang_end),
+         distance_from_end = if_else(strand == "+",
+                                     gend - overhang_end,
+                                     overhang_start - gstart)) |>
+  select(event_id, distance_from_start, distance_from_end, length_is_triple) |>
+  full_join(
+    features_long |>
+      filter(event_type == "A3") |>
+      select(event_type, event_id, has_ds, is_detectable) |>
+      distinct(),
+    by = "event_id"
+  )
+stopifnot( !any(is.na(pos_A3)) )
+
+
+
+
+
+bind_rows(pos_SE, pos_A5, pos_A3) |>
+  filter(is_detectable) |>
+  mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end),
+         event_type = case_match(event_type,
+                                 "A3" ~ "Alt. 3' ss",
+                                 "A5" ~ "Alt. 5' ss",
+                                 "SE" ~ "Cassette exon")) |>
+  ggplot() +
+  theme_classic() +
+  scale_y_continuous(labels = scales::label_number(scale = 1e4, accuracy = 1)) +
+  scale_fill_brewer(type = "qual",
+                    labels = c("Frame-shifting","Frame-preserving")) +
+  guides(fill = guide_legend(title = NULL )) +
+  theme(legend.position = "top") +
+  ylab("Density (×10,000)") +
+  # scale_x_log10() +
+  scale_x_continuous(limits = c(0, 5000)) +
+  xlab("Distance from gene extremities (bp, truncated)") +
+  facet_grid(rows = vars(event_type), scales = "free_y") +
+  geom_density(aes(x = distance_from_extremity, fill = length_is_triple),
+               alpha = .5)
+
+# ggsave("events_length_triple_position.pdf", path = export_dir,
+#        width = 12, height = 10, units = "cm")
+
+
+# save source data
+
+# bind_rows(pos_SE, pos_A5, pos_A3) |>
+#   mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
+#   select(event_type, event_id, length_is_triple,
+#          distance_from_gene_start = distance_from_start,
+#          distance_from_gene_end = distance_from_end,
+#          distance_from_extremity,
+#          is_detectable,
+#          has_ds) |>
+#   writexl::write_xlsx(file.path(export_dir, "events_length_triple_position_sourceData.xlsx"))
+  
+
+
+pos_SE |>
+  # filter(is_detectable) |>
+  mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
+  wilcox.test(distance_from_extremity ~ length_is_triple, data = _)
+
+pos_A3 |>
+  # filter(is_detectable) |>
+  mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
+  wilcox.test(distance_from_extremity ~ length_is_triple, data = _)
+
+pos_A5 |>
+  # filter(is_detectable) |>
+  mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
+  wilcox.test(distance_from_extremity ~ length_is_triple, data = _)
+
 
 
 # Microexons ----
 
-# coords_all <- qs::qread("intermediates/240425_dpsi/240425_all_coords.qs")
-# dpsi <- qs::qread("intermediates/240425_dpsi/filt_dpsi.qs")
+
 
 skipped_exons_lengths <- coords_all |>
   filter(event_type == "SE") |>
@@ -962,13 +1185,19 @@ skipped_exons_lengths |>
              color = 'red3')
 
 
-skipped_exons2 <- skipped_exons |>
-  filter(detectable) |>
-  summarize(has_ds = any(is_ds),
-            .by = c(exon_length, event_id))
+
+# skipped_exons2 <- skipped_exons |>
+#   filter(detectable) |>
+#   summarize(has_ds = any(is_ds),
+#             is_detectable = any(detectable),
+#             .by = c(exon_length, event_id))
 
 lim_high <- 27
-skipped_exons2 |>
+skipped_exons |>
+  summarize(has_ds = any(is_ds),
+            is_detectable = any(detectable),
+            .by = c(exon_length, event_id)) |>
+  filter(is_detectable) |>
   ggplot() +
   theme_classic() +
   geom_histogram(aes(x = exon_length,
@@ -1003,8 +1232,38 @@ skipped_exons2 |>
 # ggsave("microexons.pdf", path = export_dir,
 #        width = 12, height = 8, units = "cm")
 
+
+# export all cassette exons
+
+# skipped_exons |>
+#   summarize(has_ds = any(is_ds),
+#             is_detectable = any(detectable),
+#             .by = c(exon_length, event_id)) |>
+#   separate_wider_regex(event_id,
+#                        patterns = c(gene_id = "^WBGene[0-9]{8}", ";",
+#                                     "SE", ":",
+#                                     chr = "[IVX]+", ":",
+#                                     start = "[0-9]+", "-[0-9]+:[0-9]+-",
+#                                     end = "[0-9]+", ":", "[+-]$"),
+#                        cols_remove = FALSE) |>
+#   mutate(gene_name = i2s(gene_id, gids),
+#          coordinates = paste0(chr,":",start,"-",end)) |>
+#   mutate(is_microexon = exon_length <= 27) |>
+#   select(gene_name, event_id, is_detectable, has_ds, exon_length, is_microexon, coordinates) |>
+#   writexl::write_xlsx(file.path(export_dir, "microexons_sourceData.xlsx"))
+
+
+
+
+
+
 # test
-skp_ex_test <- skipped_exons2 |>
+
+skp_ex_test <- skipped_exons |>
+  summarize(has_ds = any(is_ds),
+            is_detectable = any(detectable),
+            .by = c(exon_length, event_id)) |>
+  filter(is_detectable) |>
   mutate(is_microexon = exon_length <= 27) |>
   summarize(nb_ds = sum(has_ds),
             nb_tot = n(),
@@ -1076,36 +1335,106 @@ skipped_ex_by_pairs |>
   scale_y_continuous(labels = scales::label_percent()) +
   xlab(NULL) + ylab("Proportion of neuron pairs dAS")
 
+# save plot
 
 # ggsave("microexons_ds_pairs.pdf", path = export_dir,
 #        width = 10, height = 9, units = "cm")
 
+# source data
+
+# skipped_ex_by_pairs |>
+#   mutate(is_microexon = exon_length <= 27,
+#          prop_ds = nb_ds/nb_tot) |>
+#   select(event_id, exon_length, is_microexon, nb_ds, nb_non_ds, nb_tot, prop_ds) |>
+#   writexl::write_xlsx(file.path(export_dir, "microexon_pairs_ds_sourceData.xlsx"))
 
 
-skipped_ex_by_pairs |>
-  filter(nb_tot > 10) |>
-  mutate(is_microexon = exon_length <= 27,
-         prop_ds = nb_ds/nb_tot) |>
-  summarize(mean_prop_ds = mean(prop_ds),
-            .by = is_microexon)
 
+## Test
 
 skipped_ex_by_pairs_filt <- skipped_ex_by_pairs |>
   filter(nb_tot > 10) |>
   mutate(is_microexon = exon_length <= 27,
          prop_ds = nb_ds/nb_tot)
 
+skipped_ex_by_pairs_filt |>
+  summarize(mean_prop_ds = mean(prop_ds),
+            .by = is_microexon)
+
 wilcox.test(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
-boxplot(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
 
 
 
-#~ export microexons ----
 
-# skipped_exons2 |>
-#   mutate(is_microexon = exon_length <= 27) |>
-#   filter(is_microexon, has_ds) |>
-#   select(event_id) |>
-#   write_csv("data/outs/240426_microexons.csv")
+
+# Gini ----
+
+dpsi_gini <- dpsi |>
+  filter(!is.na(dPSI)) |>
+  summarize(max_dpsi = max(abs(dPSI)),
+            gini = DescTools::Gini(abs(dPSI)),
+            nb_pairs = n(),
+            .by = c("event_id", "gene_id","event_type"))
+
+
+
+
+
+#~ Plot Gini ----
+
+
+dpsi_gini_plot <- dpsi_gini |>
+  filter(nb_pairs > 5) |>
+  filter(event_type != "RI") |>
+  mutate(event_type = case_match(event_type,
+                                 "A3" ~ "Alt. 3' ss",
+                                 "A5" ~ "Alt. 5' ss",
+                                 "AF" ~ "Alt. first exon",
+                                 "AL" ~ "Alt. last exon",
+                                 "MX" ~ "Multiple exons",
+                                 "RI" ~ "Intron retention",
+                                 "SE" ~ "Cassette exon")) |>
+  mutate(gene_name = i2s(gene_id, gids))
+
+dpsi_gini_plot |>
+  ggplot() +
+  theme_classic() +
+  ylab(expression(Gini~index~group("(",group("|",Delta*PSI,"|"),")"))) +
+  xlab(expression(max~group("(",group("|",Delta*PSI,"|"),")"))) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme(legend.position = "none") +
+  annotate("segment", x = .5, xend = 1, y = .5, linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = .5), linetype = 'dashed', color = 'grey') +
+  facet_wrap(~event_type) +
+  geom_point(aes(x = max_dpsi, y = gini, color = event_type),
+             alpha = .3) +
+  geom_text(data = dpsi_gini_plot |>
+              summarize(low_dpsi = sum( max_dpsi <= .5),
+                        low_gini = sum(max_dpsi > .5 & gini <= .5),
+                        high_gini = sum(max_dpsi > .5 & gini > .5),
+                        .by = event_type) |>
+              pivot_longer(-event_type,
+                           names_to = "class",
+                           values_to = "number") |>
+              mutate(prop = round(100*number / sum(number), 1),
+                     .by = event_type) |>
+              mutate(label = paste0(number, "\n(",prop,"%)")) |>
+              left_join(tibble(x = c(0, 1, 1),
+                               y = c(.1, .1, .9),
+                               hjust = c(0,1,1),
+                               class = c("low_dpsi","low_gini","high_gini"))),
+            aes(x=x,y=y,label=label,hjust = hjust))
+
+# ggsave("events_gini.pdf", path = export_dir,
+#        width = 10, height = 8, units = "cm", scale = 1.8)
+
+# souce data
+
+# dpsi_gini |>
+#   mutate(gene_name = i2s(gene_id, gids)) |>
+#   select(event_type, gene_name, event_id, max_dpsi, gini_dpsi = gini, nb_measured_pairs = nb_pairs) |>
+#   writexl::write_xlsx(file.path(export_dir, "events_gini_sourceData.xlsx"))
+  
 
 
