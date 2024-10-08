@@ -979,19 +979,26 @@ imap(proportions_l,
 
 # Save table
 
-# proportions_l |>
-#   imap(~ .x |> add_column(event_type = .y, .before = 1)) |>
-#   map(~{
-#     test <- .x |>
-#         filter(is_detectable) |>
-#         select(n_frame, n_not_frame) |>
-#         chisq.test()
-#     
-#     .x |>
-#       add_column(pvalue = c(0,0, test[["p.value"]] ))
-#     
-#     }) |>
-#   bind_rows() |>
+prop_pfs_tab <- proportions_l |>
+  imap(~ .x |> add_column(event_type = .y, .before = 1)) |>
+  map(~{
+    test <- .x |>
+        filter(is_detectable) |>
+        select(n_frame, n_not_frame) |>
+        chisq.test()
+
+    .x |>
+      add_column(pvalue = c(0,0, test[["p.value"]] ))
+
+    }) |>
+  bind_rows()
+
+prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0] = p.adjust(
+  prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0]
+  )
+
+# save
+# prop_pfs_tab |>
 #   mutate(
 #     category = case_when(
 #       ! is_detectable ~ "not measured",
