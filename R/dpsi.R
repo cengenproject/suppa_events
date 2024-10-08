@@ -709,16 +709,16 @@ features_long |>
                                 scale = 3, bandwidth = .1) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_af_pe_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal exon length (bp)") + ylab(NULL)
+  xlab("Alternative first exon,\nproximal exon length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_pe_length.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 
@@ -745,18 +745,18 @@ features_long |>
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_se_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_x_log10(labels = scales::label_comma()) +
   # scale_x_continuous(limits = c(0, 500)) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   theme(legend.position = "none") +
-  xlab("Skipped exon length (bp)") + ylab(NULL)
+  xlab("Skipped exon,\nexon length (bp)") + ylab(NULL)
 
 
 # ggsave("ridge_se_exon_length.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 #~~ AF dist intron length ----
@@ -780,17 +780,17 @@ features_long |>
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_af_di_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal intron length (bp)") + ylab(NULL)
+  xlab("Alternative first exon,\ndistal intron length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_di_length.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 
@@ -816,17 +816,17 @@ features_long |>
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_a5_i_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative 5' splice site, intron length (bp)") + ylab(NULL)
+  xlab("Alternative 5' splice site,\nintron length (bp)") + ylab(NULL)
 
 # ggsave("ridge_a5_i_length.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 
@@ -855,16 +855,16 @@ features_long |>
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_af_pi_cons_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, proximal intron conservation score") + ylab(NULL)
+  xlab("Alternative first exon,\nproximal intron conservation score") + ylab(NULL)
 
 # ggsave("ridge_af_pi_cons.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 
@@ -889,17 +889,17 @@ features_long |>
                                 scale = 3) +
   geom_vline(aes(xintercept = median, color = has_ds),
              data = d_af_de_med,
-             linetype = 'dashed', linewidth = 1) +
+             linetype = 'dashed', linewidth = .4) +
   scale_x_log10(labels = scales::label_comma()) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   scale_color_manual(values = c("grey50", "red3")) +
   scale_y_discrete(expand = c(0.01, 0), labels = NULL) +
   # scale_y_continuous(limits = c(0,1.2)) +
   theme(legend.position = "none") +
-  xlab("Alternative first exon, distal exon length (bp)") + ylab(NULL)
+  xlab("Alternative first exon,\ndistal exon length (bp)") + ylab(NULL)
 
 # ggsave("ridge_af_de_length.pdf", path = export_dir,
-#        width = 5, height = 5, units = "cm")
+#        width = 5, height = 4.5, units = "cm")
 
 
 
@@ -1127,7 +1127,7 @@ bind_rows(pos_SE, pos_A5, pos_A3) |>
                alpha = .5)
 
 # ggsave("events_length_triple_position.pdf", path = export_dir,
-#        width = 12, height = 10, units = "cm")
+#        width = 16, height = 10, units = "cm")
 
 
 # save source data
@@ -1186,11 +1186,11 @@ skipped_exons_lengths |>
 
 
 
-# skipped_exons2 <- skipped_exons |>
-#   filter(detectable) |>
-#   summarize(has_ds = any(is_ds),
-#             is_detectable = any(detectable),
-#             .by = c(exon_length, event_id))
+skipped_exons2 <- skipped_exons |>
+  filter(detectable) |>
+  summarize(has_ds = any(is_ds),
+            is_detectable = any(detectable),
+            .by = c(exon_length, event_id))
 
 lim_high <- 27
 skipped_exons |>
@@ -1205,15 +1205,13 @@ skipped_exons |>
                  bins = 30,
                  color = 'white') +
   scale_x_log10(labels = scales::label_comma()) +
-  geom_vline(aes(xintercept = 27),
-             color = 'grey10', linetype = "dashed") +
   geom_vline(aes(xintercept = lim_high),
-             color = 'grey10', linetype = "dashed") +
+             color = 'grey50', linetype = "dashed", linewidth = .8) +
   scale_fill_manual(values = c("grey30", "darkred")) +
   geom_text(data = tibble(
     x = c(11, 3000),
     y = c(90,90),
-    label = c(paste0("Microexons (≤ 27 bp)\n",
+    label = c(paste0("Microexons\n(≤ 27 bp)\n",
                      sum(skipped_exons2$has_ds[skipped_exons2$exon_length <= 27]),
                      "/",
                      sum(skipped_exons2$exon_length <= 27),
@@ -1230,7 +1228,7 @@ skipped_exons |>
   ylab("Number of exons")
 
 # ggsave("microexons.pdf", path = export_dir,
-#        width = 12, height = 8, units = "cm")
+#        width = 12, height = 14, units = "cm")
 
 
 # export all cassette exons
@@ -1327,18 +1325,19 @@ skipped_ex_by_pairs |>
                              str_split_i(event_id, ";",1) |>
                                i2s(gids, warn_missing = TRUE),
                              "")) |>
-  mutate(type = if_else(is_microexon, "microexon", "longer exon")) |>
+  mutate(type = if_else(is_microexon, "microexon", "longer exon") |>
+           factor(levels = c("microexon", "longer exon"))) |>
   ggplot(aes(x = type, y = prop_ds, label = gene_name)) +
   theme_classic() +
-  geom_point(position = pos) +
-  ggrepel::geom_text_repel(box.padding = 1.2, position = pos, color = 'grey40') +
+  geom_point(position = pos, alpha = .2) +
+  # ggrepel::geom_text_repel(box.padding = 1.2, position = pos, color = 'grey40') +
   scale_y_continuous(labels = scales::label_percent()) +
-  xlab(NULL) + ylab("Proportion of neuron pairs dAS")
+  xlab(NULL) + ylab("Proportion of neuron pairs DAS")
 
 # save plot
 
 # ggsave("microexons_ds_pairs.pdf", path = export_dir,
-#        width = 10, height = 9, units = "cm")
+#        width = 7, height = 9, units = "cm")
 
 # source data
 
