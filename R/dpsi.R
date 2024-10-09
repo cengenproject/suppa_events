@@ -303,6 +303,7 @@ events_categorized |>
 
 
 #~ Manual exploration compare neurons and tissue sero vs pan DAS ----
+# Mentioned in discussion, not shown
 
 # serotonergic: keep only comparisons of a sero neuron and a non-sero, check if DAS
 neuron_ds_sero_vs_all <- dpsi |>
@@ -902,7 +903,20 @@ features_long |>
 #        width = 5, height = 4.5, units = "cm")
 
 
+# ---> source data
 
+# features_long |>
+#   filter(
+#     (event_type == "AF" & feature == "proximal_exon") |
+#       (event_type == "SE" & feature == "exon") |
+#       (event_type == "AF" & feature == "distal_intron") |
+#       (event_type == "AF" & feature == "distal_intron") |
+#       (event_type == "A5" & feature == "intron") |
+#       (event_type == "AF" & feature == "proximal_intron") |
+#       (event_type == "AF" & feature == "distal_exon")
+#   ) |>
+#   filter(is_detectable) |>
+#   writexl::write_xlsx(file.path(export_dir, "sourceDate_feature_densityplots.xlsx"))
 
 
 
@@ -1442,5 +1456,80 @@ dpsi_gini_plot |>
 #   select(event_type, gene_name, event_id, max_dpsi, gini_dpsi = gini, nb_measured_pairs = nb_pairs) |>
 #   writexl::write_xlsx(file.path(export_dir, "events_gini_sourceData.xlsx"))
   
+
+#~ Gini for microexons ----
+
+# https://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette#8197703
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+
+uex_gini <- dpsi_gini |>
+  filter(event_type == "SE") |>
+  left_join(skipped_exons_lengths,
+            by = "event_id") |>
+  mutate(type = if_else(exon_length <= lim_high,
+                        "Microexon", "Longer exon"))
+
+uex_gini_plot <- uex_gini |>
+  filter(nb_pairs > 5) |>
+  mutate(gene_name = i2s(gene_id, gids))
+
+uex_gini |>
+  ggplot() +
+  theme_classic() +
+  ylab(expression(Gini~index~group("(",group("|",Delta*PSI,"|"),")"))) +
+  xlab(expression(max~group("(",group("|",Delta*PSI,"|"),")"))) +
+  scale_x_continuous(limits = c(0,1)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme(legend.position = "none") +
+  annotate("segment", x = .5, xend = 1, y = .5, linetype = 'dashed', color = 'grey') +
+  geom_vline(aes(xintercept = .5), linetype = 'dashed', color = 'grey') +
+  facet_wrap(~type) +
+  geom_point(aes(x = max_dpsi, y = gini),
+             color = gg_color_hue(6)[[5]],
+             alpha = .3) +
+  geom_text(data = uex_gini_plot |>
+              summarize(low_dpsi = sum( max_dpsi <= .5),
+                        low_gini = sum(max_dpsi > .5 & gini <= .5),
+                        high_gini = sum(max_dpsi > .5 & gini > .5),
+                        .by = type) |>
+              pivot_longer(-type,
+                           names_to = "class",
+                           values_to = "number") |>
+              mutate(prop = round(100*number / sum(number), 1),
+                     .by = type) |>
+              mutate(label = paste0(number, "\n(",prop,"%)")) |>
+              left_join(tibble(x = c(0, 1, 1),
+                               y = c(.1, .1, .9),
+                               hjust = c(0,1,1),
+                               class = c("low_dpsi","low_gini","high_gini"))),
+            aes(x=x,y=y,label=label,hjust = hjust))
+
+
+# ggsave("gini_microexons.pdf", path = export_dir,
+#        width = 6, height = 4, units = "cm", scale = 2)
+
+# ---> source data
+
+# uex_gini |>
+#   filter(nb_pairs > 5) |>
+#   mutate(gene_name = i2s(gene_id, gids, warn_missing = TRUE),
+#          .after = gene_id) |>
+#   writexl::write_xlsx(file.path(export_dir, "sourceData_gini_microexons.xlsx"))
+
+
+
+
+
+
+
+
+
+
+
+
 
 
