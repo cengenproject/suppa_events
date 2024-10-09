@@ -192,12 +192,12 @@ get_seq_mx <- function(d_mx){
                     strand = d_mx$strand)
   
   mx_f_ui <- GRanges(seqnames = d_mx$chr,
-                     ranges = IRanges(start = d_mx$first_up_intron_start,
-                                      end = d_mx$first_up_intron_end),
+                     ranges = IRanges(start = d_mx$first_upstream_intron_start,
+                                      end = d_mx$first_upstream_intron_end),
                      strand = d_mx$strand)
   mx_f_di <- GRanges(seqnames = d_mx$chr,
-                     ranges = IRanges(start = d_mx$first_dn_intron_start,
-                                      end = d_mx$first_dn_intron_end),
+                     ranges = IRanges(start = d_mx$first_downstream_intron_start,
+                                      end = d_mx$first_downstream_intron_end),
                      strand = d_mx$strand)
   
   mx_s_e <- GRanges(seqnames = d_mx$chr,
@@ -205,12 +205,12 @@ get_seq_mx <- function(d_mx){
                                      end = d_mx$second_exon_end),
                     strand = d_mx$strand)
   mx_s_ui <- GRanges(seqnames = d_mx$chr,
-                     ranges = IRanges(start = d_mx$second_up_intron_start,
-                                      end = d_mx$second_up_intron_end),
+                     ranges = IRanges(start = d_mx$second_upstream_intron_start,
+                                      end = d_mx$second_upstream_intron_end),
                      strand = d_mx$strand)
   mx_s_di <- GRanges(seqnames = d_mx$chr,
-                     ranges = IRanges(start = d_mx$second_dn_intron_start,
-                                      end = d_mx$second_dn_intron_end),
+                     ranges = IRanges(start = d_mx$second_downstream_intron_start,
+                                      end = d_mx$second_downstream_intron_end),
                      strand = d_mx$strand)
   
   mx_f_e_s <- gseq[mx_f_e]
