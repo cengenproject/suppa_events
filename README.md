@@ -13,7 +13,7 @@ Run `src/suppa2_dpsi.sh`, which will call `src/split_events.R` to group PSI by n
 
 Main analysis in `R/dpsi.R`. This script uses accessory functions defined in `R/sequence_properties.R`, `R/sequence_conservation.R`, and `R/extract_event_coordinates.R`.
 
-Additional analyses directly on the PSIs (as opposed to deltaPSIs) are in `R/psi.R`, not included in paper.
+Additional exploratory and tests scripts are stored in the branch `exploratory`.
 
 
 # Older versions
