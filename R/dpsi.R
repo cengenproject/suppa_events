@@ -295,7 +295,11 @@ events_categorized |>
 
 # ggsave("ds_per_type.pdf", path = export_dir,
 #        width = 16, height = 9, units = "cm")
-# 
+
+# > Fig. 6A 
+
+# ---> source data
+
 # events_categorized |>
 #   writexl::write_xlsx(file.path(export_dir, "ds_per_type_sourceData.xlsx"))
 
@@ -390,6 +394,7 @@ psi_lg_tissue |>
 source("R/extract_event_coordinates.R")
 
 coords_all <- dpsi |>
+  filter(event_type != "RI") |>
   select(event_id, event_type, gene_id, gene_name, event_coordinates) |>
   distinct() |>
   nest(.by = event_type) |>
@@ -519,6 +524,7 @@ local({
   stopifnot(all.equal(
     features_long |>
       left_join(dpsi |>
+                  filter(event_type != "RI") |>
                   summarize(has_ds = any(is_ds),
                             is_detectable = any(detectable),
                             .by = c(event_type, event_id)),
@@ -526,6 +532,7 @@ local({
       ),
     features_long |>
       full_join(dpsi |>
+                  filter(event_type != "RI") |>
                   summarize(has_ds = any(is_ds),
                             is_detectable = any(detectable),
                             .by = c(event_type, event_id)),
@@ -536,6 +543,7 @@ local({
 
 features_long <- features_long |>
   full_join(dpsi |>
+              filter(event_type != "RI") |>
               summarize(has_ds = any(is_ds),
                         is_detectable = any(detectable),
                         .by = c(event_type, event_id)),
@@ -546,9 +554,9 @@ features_long <- features_long |>
 
 
 # qs::qsave(features_long,
-#           "intermediates/240918/240920_features.qs")
+#           "intermediates/240918/241011_features.qs")
 
-features_long <- qs::qread("intermediates/240918/240920_features.qs")
+features_long <- qs::qread("intermediates/240918/241011_features.qs")
 
 
 #~ Plots ----
@@ -658,11 +666,12 @@ table_signif_seq_feats <- tests |>
   select(event_type, feature, metric, median_ds, median_nonds, padj, sig)
 
 table_signif_seq_feats |>
-  as.data.frame()
+  arrange(padj)
 
 # Save results (table 1)
 
 # table_signif_seq_feats |>
+#   arrange(padj) |>
 #   writexl::write_xlsx(file.path(export_dir, "sequence_features_signif.xlsx"))
 
 
@@ -902,6 +911,8 @@ features_long |>
 # ggsave("ridge_af_de_length.pdf", path = export_dir,
 #        width = 5, height = 4.5, units = "cm")
 
+# > Fig. 6B
+
 
 # ---> source data
 
@@ -990,6 +1001,8 @@ imap(proportions_l,
 # ggsave("events_length_triple.pdf", path = export_dir,
 #        width = 15, height = 6, units = "cm")
 
+# > Fig 6E
+
 
 # Save table
 
@@ -1011,7 +1024,8 @@ prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0] = p.adjust(
   prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0]
   )
 
-# save
+# save table 2 essentially identical to source data Fig 6E
+
 # prop_pfs_tab |>
 #   mutate(
 #     category = case_when(
@@ -1150,6 +1164,7 @@ bind_rows(pos_SE, pos_A5, pos_A3) |>
 # ggsave("events_length_triple_position.pdf", path = export_dir,
 #        width = 16, height = 10, units = "cm")
 
+# > Fig 6F
 
 # save source data
 
@@ -1179,6 +1194,18 @@ pos_A5 |>
   # filter(is_detectable) |>
   mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
   wilcox.test(distance_from_extremity ~ length_is_triple, data = _)
+
+list(pos_SE, pos_A3, pos_A5) |>
+  setNames(c("SE","A3","A5")) |>
+  map_dbl(~{
+    .x |>
+      filter(is_detectable) |>
+      mutate(distance_from_extremity = pmin(distance_from_start, distance_from_end)) |>
+      wilcox.test(distance_from_extremity ~ length_is_triple, data = _) |>
+      pluck("p.value")
+  }) |>
+  p.adjust()
+
 
 
 
@@ -1390,6 +1417,7 @@ wilcox.test(prop_ds ~ is_microexon, data = skipped_ex_by_pairs_filt)
 # Gini ----
 
 dpsi_gini <- dpsi |>
+  filter(event_type != "RI") |>
   filter(!is.na(dPSI)) |>
   summarize(max_dpsi = max(abs(dPSI)),
             gini = DescTools::Gini(abs(dPSI)),
