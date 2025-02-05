@@ -5,6 +5,7 @@
 
 library(Biostrings)
 library(GenomicFeatures)
+library(plyranges)
 library(genomation)
 
 library(tidyverse)
@@ -388,7 +389,7 @@ psi_lg_tissue |>
 # >> Sequence features << ----
 
 # below this point, only compare whether difference between DAS and non-DAS
-
+# note, results saved in features_long qs file, can skip to end of the "Assemble data" subsection
 
 #~ Extract coordinates of event ----
 source("R/extract_event_coordinates.R")
@@ -938,22 +939,134 @@ features_long |>
 
 # >> Protein sequence << ----
 
+# ~ restrict to CDS-overlapping events ----
 
-proportions_ndf <- features_long |>
-  filter((event_type == "A5" & feature == "overhang") |
-           (event_type == "A3" & feature == "overhang") |
-           (event_type == "SE" & feature == "exon") ) |>
+source("R/extract_event_coordinates.R")
+
+cds <- GenomicFeatures::cds(wbData::wb_load_TxDb(289))
+
+
+coords_all <- dpsi |>
+  select(event_id, event_type, gene_id, gene_name, event_coordinates) |>
+  distinct() |>
+  nest(.by = event_type) |>
+  mutate(coords = map2(event_type, data,
+                       ~ extract_coords(.x, .y[["event_coordinates"]]))) |>
+  mutate(coords = map2(data, coords,
+                       ~bind_cols(.x["event_id"],
+                                  .y)))
+
+
+# ~~ Alt 3' ss ----
+
+# does the overhang overlap the CDS?
+
+a3_gr <- coords_all |>
+  filter(event_type == "A3") |>
+  chuck("coords", 1L) |>
+  select(-matches("^c[1-4]$"),
+         -ends_with("_length")) |>
+  pivot_longer(cols = c(intron_start, intron_end, overhang_start, overhang_end),
+               names_to = c("feature", ".value"),
+               names_sep = "_") |>
+  rename(seqnames = chr) |>
+  as_granges()
+
+
+a3_overhang_gr <- a3_gr |>
+  filter(feature == "overhang")
+
+a3_overhang_in_cds <- join_overlap_inner_directed(a3_overhang_gr, cds) |>
+  as.data.frame() |>
+  pull(event_id) |>
+  unique()
+
+
+
+# ~~ Alt 5' ss ----
+
+# does the overhang overlap the CDS?
+
+a5_gr <- coords_all |>
+  filter(event_type == "A5") |>
+  chuck("coords", 1L) |>
+  select(-matches("^c[1-4]$"),
+         -ends_with("_length")) |>
+  pivot_longer(cols = c(intron_start, intron_end, overhang_start, overhang_end),
+               names_to = c("feature", ".value"),
+               names_sep = "_") |>
+  rename(seqnames = chr) |>
+  as_granges()
+
+
+a5_overhang_gr <- a5_gr |>
+  filter(feature == "overhang")
+
+a5_overhang_in_cds <- join_overlap_inner_directed(a5_overhang_gr, cds) |>
+  as.data.frame() |>
+  pull(event_id) |>
+  unique()
+
+
+
+# ~~ SE ----
+
+# does the exon (inclusion) overlap CDS
+
+se_gr <- coords_all |>
+  filter(event_type == "SE") |>
+  chuck("coords", 1L) |>
+  select(event_id, chr, strand,
+         intron_start = upstream_intron_start,
+         intron_end = downstream_intron_end,
+         exon_start, exon_end) |>
+  pivot_longer(cols = c(intron_start, intron_end, exon_start, exon_end),
+               names_to = c("feature", ".value"),
+               names_pattern = "^(intron|exon)_(start|end)$") |>
+  rename(seqnames = chr) |>
+  as_granges()
+
+
+se_inclusion <- se_gr |>
+  filter(feature == "exon")
+
+se_exons_in_cds <- join_overlap_inner_directed(se_inclusion, cds) |>
+  as.data.frame() |>
+  pull(event_id) |>
+  unique()
+
+
+
+
+length(a3_overhang_in_cds)
+length(a3_gr)/2
+
+length(a5_overhang_in_cds)
+length(a5_gr)/2
+
+length(se_exons_in_cds)
+length(se_gr)/2
+
+
+
+
+# ~ frame-shift ----
+
+proportions_ndf <-  features_long |>
+  filter((event_type == "A5" & feature == "overhang" & (event_id %in% a5_overhang_in_cds)) |
+           (event_type == "A3" & feature == "overhang" & (event_id %in% a3_overhang_in_cds)) |
+           (event_type == "SE" & feature == "exon" & (event_id %in% se_exons_in_cds)) ) |>
   mutate(length_is_triple = (length %% 3) == 0) |>
   nest(.by = event_type) |>
   mutate(tab = map(data,
-             ~ {
-               .x |>
-                 summarize(n_frame = sum(length_is_triple),
-                           n_not_frame = sum(!length_is_triple),
-                           .by = c(has_ds, is_detectable)) |>
-                 mutate(prop_in_frame = round( 100 * n_frame / (n_frame + n_not_frame) )) |>
-                 arrange(is_detectable, has_ds)
-             }
+                   ~ {
+                     .x |>
+                       summarize(n_frame = sum(length_is_triple),
+                                 n_not_frame = sum(!length_is_triple),
+                                 .by = c(has_ds, is_detectable)) |>
+                       mutate(prop_in_frame = round( 100 * n_frame / (n_frame + n_not_frame) )) |>
+                       arrange(is_detectable, has_ds)
+                   }
   ))
 
 proportions_l <- proportions_ndf$tab |> set_names(proportions_ndf$event_type)
@@ -1020,9 +1133,12 @@ prop_pfs_tab <- proportions_l |>
     }) |>
   bind_rows()
 
-prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0] = p.adjust(
-  prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0]
-  )
+prop_pfs_tab$p_adj <- NA
+
+prop_pfs_tab$p_adj[!is.na(prop_pfs_tab$pvalue)] = p.adjust(
+  prop_pfs_tab$pvalue[!is.na(prop_pfs_tab$pvalue)]
+)
+prop_pfs_tab
 
 # save table 2 essentially identical to source data Fig 6E
 
@@ -1045,7 +1161,8 @@ prop_pfs_tab$pvalue[prop_pfs_tab$pvalue != 0] = p.adjust(
 #          `Frame-preserving events` = n_frame,
 #          `Total events` = n_total,
 #          `% in frame` = prop_in_frame,
-#          `p-value` = pvalue) |>
+#          `p-value` = pvalue,
+#          `p adjusted` = p_adj) |>
 #   writexl::write_xlsx(file.path(export_dir, "events_length_triple.xlsx"))
 
 
@@ -1083,7 +1200,8 @@ pos_SE <- coords_all$coords[[ which(coords_all$event_type == "SE") ]] |>
       select(event_type, event_id, has_ds, is_detectable) |>
       distinct(),
     by = "event_id"
-  )
+  ) |>
+  filter(event_id %in% se_exons_in_cds)
 stopifnot( !any(is.na(pos_SE)) )
 
 
@@ -1108,7 +1226,8 @@ pos_A5 <- coords_all$coords[[ which(coords_all$event_type == "A5") ]] |>
       select(event_type, event_id, has_ds, is_detectable) |>
       distinct(),
     by = "event_id"
-  )
+  ) |>
+  filter(event_id %in% a5_overhang_in_cds)
 stopifnot( !any(is.na(pos_A5)) )
 
 
@@ -1132,7 +1251,8 @@ pos_A3 <- coords_all$coords[[ which(coords_all$event_type == "A3") ]] |>
       select(event_type, event_id, has_ds, is_detectable) |>
       distinct(),
     by = "event_id"
-  )
+  ) |>
+  filter(event_id %in% a3_overhang_in_cds)
 stopifnot( !any(is.na(pos_A3)) )
 
 
