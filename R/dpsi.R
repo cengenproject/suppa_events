@@ -1117,6 +1117,23 @@ imap(proportions_l,
 # > Fig 6E
 
 
+
+# For sourceData Fig 6E
+
+# features_long |>
+#   filter((event_type == "A5" & feature == "overhang" ) |
+#            (event_type == "A3" & feature == "overhang" ) |
+#            (event_type == "SE" & feature == "exon" ) ) |>
+#   mutate(length_is_triple = (length %% 3) == 0,
+#          intersects_cds = event_id %in% c(a5_overhang_in_cds, a3_overhang_in_cds, se_exons_in_cds)) |>
+#   select(event_type, event_id, is_detectable, has_ds, length_is_triple, intersects_cds) |>
+#   # count(event_type, is_detectable, has_ds, length_is_triple, intersects_cds) |> View()
+#   writexl::write_xlsx(file.path(export_dir, "events_length_triple_sourceData.xlsx"))
+  
+
+
+
+
 # Save table
 
 prop_pfs_tab <- proportions_l |>
